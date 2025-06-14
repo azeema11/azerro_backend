@@ -1,0 +1,171 @@
+datasource db {
+  provider = "postgresql" // or "sqlite" for local dev
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// Represents different assistant modules available in the platform
+model Assistant {
+  id          String          @id @default(uuid())
+  name        String          @unique // e.g. "finance", "health", etc.
+  displayName String // e.g. "Personal Finance", "Health Tracker"
+  description String?
+  createdAt   DateTime        @default(now())
+  users       UserAssistant[]
+}
+
+/// Junction table mapping users to activated assistants
+model UserAssistant {
+  id          String    @id @default(uuid())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  assistant   Assistant @relation(fields: [assistantId], references: [id])
+  assistantId String
+  activatedAt DateTime  @default(now())
+  settings    Json? // customizable settings per assistant
+
+  @@unique([userId, assistantId])
+}
+
+model User {
+  id            String          @id @default(uuid())
+  name          String
+  email         String          @unique
+  passwordHash  String
+  createdAt     DateTime        @default(now())
+  transactions  Transaction[]
+  holdings      Holding[]
+  bankAccounts  BankAccount[]
+  plannedEvents PlannedEvent[]
+  budgets       Budget[]
+  assistants    UserAssistant[]
+  monthlyIncome Float?
+
+  baseCurrency String @default("INR") // User’s preferred reporting currency
+  Goal         Goal[]
+}
+
+model Holding {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  platform  String // e.g., Zerodha, Binance, Robinhood
+  ticker    String // e.g., INFY.NS, AAPL, BTC
+  assetType AssetType // STOCK, CRYPTO, METAL
+
+  quantity        Float
+  avgCost         Float // In holdingCurrency
+  holdingCurrency String // e.g., INR, USD, USDT
+  lastPrice       Float    @default(0) // Also in holdingCurrency
+  lastChecked     DateTime @updatedAt
+
+  convertedValue Float @default(0) // Calculated value in baseCurrency
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  amount      Float
+  currency    String
+  category    Category
+  description String?
+  date        DateTime
+
+  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
+  bankAccountId String?
+}
+
+model BankAccount {
+  id        String      @id @default(uuid())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    String
+  name      String
+  type      AccountType
+  balance   Float
+  currency  String
+  createdAt DateTime    @default(now())
+
+  transactions Transaction[]
+}
+
+model PlannedEvent {
+  id            String   @id @default(uuid())
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String
+  name          String // e.g. "Goa Trip"
+  targetDate    DateTime
+  estimatedCost Float
+  savedSoFar    Float    @default(0)
+  createdAt     DateTime @default(now())
+}
+
+model Budget {
+  id        String      @id @default(uuid())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    String
+  category  Category
+  amount    Float // budget amount per period
+  period    Periodicity // WEEKLY, MONTHLY, ANNUAL
+  createdAt DateTime    @default(now())
+}
+
+enum Category {
+  GROCERY
+  UTILITIES
+  TRANSPORTATION
+  CLOTHING
+  ENTERTAINMENT
+  RENT
+  HEALTHCARE
+  OTHER
+}
+
+enum AssetType {
+  STOCK
+  CRYPTO
+  METAL
+}
+
+enum AccountType {
+  SAVINGS
+  CURRENT
+  CREDIT_CARD
+  CASH
+}
+
+enum Periodicity {
+  WEEKLY
+  MONTHLY
+  ANNUAL
+}
+
+model CurrencyRate {
+  id        String   @id @default(uuid())
+  base      String // e.g., USD
+  target    String // e.g., INR
+  rate      Float
+  updatedAt DateTime @updatedAt
+
+  @@unique([base, target])
+}
+
+model Goal {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  name         String
+  description  String?
+  targetAmount Float
+  savedAmount  Float    @default(0)
+  currency     String // e.g., INR, USD
+  targetDate   DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  completed    Boolean  @default(false)
+}
