@@ -48,45 +48,53 @@ export async function updateCurrencyRates(base = 'USD') {
 }
 
 async function addFallbackRates() {
-    console.log('Adding fallback currency rates...');
-    const fallbackRates = {
-        'INR': 83.12,
-        'EUR': 0.85,
-        'GBP': 0.73,
-        'JPY': 110.0,
-        'CAD': 1.25,
-        'AUD': 1.35,
-        'CHF': 0.88,
-        'CNY': 6.45
-    };
+    try {
+        console.log('Adding fallback currency rates...');
+        const fallbackRates = {
+            'INR': 83.12,
+            'EUR': 0.85,
+            'GBP': 0.73,
+            'JPY': 110.0,
+            'CAD': 1.25,
+            'AUD': 1.35,
+            'CHF': 0.88,
+            'CNY': 6.45
+        };
 
-    const fallbackOps = Object.entries(fallbackRates).map(([target, rate]) =>
-        prisma.currencyRate.upsert({
-            where: {
-                base_target: {
+        const fallbackOps = Object.entries(fallbackRates).map(([target, rate]) =>
+            prisma.currencyRate.upsert({
+                where: {
+                    base_target: {
+                        base: 'USD',
+                        target,
+                    },
+                },
+                update: { rate },
+                create: {
                     base: 'USD',
                     target,
+                    rate,
                 },
-            },
-            update: { rate },
-            create: {
-                base: 'USD',
-                target,
-                rate,
-            },
-        })
-    );
+            })
+        );
 
-    await Promise.all(fallbackOps);
-    console.log('✅ Fallback currency rates added');
+        await Promise.all(fallbackOps);
+        console.log('✅ Fallback currency rates added');
+    } catch (err) {
+        console.error(`❌ Failed to add fallback currency rates:`, err);
+    }
 }
 
 export async function ensureCurrencyRatesExist() {
-    const count = await prisma.currencyRate.count();
-    if (count === 0) {
-        console.log('No currency rates found, fetching initial rates...');
-        await updateCurrencyRates('USD');
-    } else {
-        console.log(`Found ${count} existing currency rates`);
+    try {
+        const count = await prisma.currencyRate.count();
+        if (count === 0) {
+            console.log('No currency rates found, fetching initial rates...');
+            await updateCurrencyRates('USD');
+        } else {
+            console.log(`Found ${count} existing currency rates`);
+        }
+    } catch (err) {
+        console.error(`❌ Failed to ensure currency rates exist:`, err);
     }
-} 
+}

@@ -46,11 +46,12 @@ export const createHolding = asyncHandler(async (req: AuthRequest, res: Response
     quantity,
     avgCost,
     holdingCurrency,
+    name,
   } = req.body;
 
-  if (!platform || !ticker || !assetType || !quantity || !avgCost || !holdingCurrency) {
+  if (!platform || !ticker || !assetType || !quantity || !avgCost || !holdingCurrency || !name) {
     return res.status(400).json({
-      error: 'Platform, ticker, asset type, quantity, average cost, and holding currency are required'
+      error: 'Platform, ticker, asset type, quantity, average cost, name, and holding currency are required'
     });
   }
 
@@ -80,6 +81,7 @@ export const createHolding = asyncHandler(async (req: AuthRequest, res: Response
       holdingCurrency,
       lastPrice,
       convertedValue,
+      name,
       userId: req.userId!,
     },
   });

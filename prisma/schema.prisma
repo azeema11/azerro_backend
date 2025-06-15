@@ -56,6 +56,7 @@ model Holding {
   platform  String // e.g., Zerodha, Binance, Robinhood
   ticker    String // e.g., INFY.NS, AAPL, BTC
   assetType AssetType // STOCK, CRYPTO, METAL
+  name      String
 
   quantity        Float
   avgCost         Float // In holdingCurrency

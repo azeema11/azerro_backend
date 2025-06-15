@@ -5,15 +5,28 @@ export async function convertCurrencyFromDB(
   from: string,
   to: string
 ): Promise<number> {
-  if (from === to) return value;
+  try {
+    if (from === to) return value;
 
-  const rateRecord = await prisma.currencyRate.findUnique({
-    where: {
-      base_target: { base: from, target: to }
+    const rateRecord = await prisma.currencyRate.findUnique({
+      where: {
+        base_target: { base: from, target: to }
+      }
+    });
+
+    if (!rateRecord) {
+      throw new Error(`Missing exchange rate from ${from} to ${to}`);
     }
-  });
 
-  if (!rateRecord) throw new Error(`Missing exchange rate from ${from} to ${to}`);
+    return value * rateRecord.rate;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Missing exchange rate')) {
+      // Re-throw business logic errors as-is
+      throw error;
+    }
 
-  return value * rateRecord.rate;
+    // Handle database or other unexpected errors
+    console.error(`Error converting currency from ${from} to ${to}:`, error);
+    throw new Error(`Failed to convert currency from ${from} to ${to}`);
+  }
 }
