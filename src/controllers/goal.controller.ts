@@ -54,7 +54,6 @@ export const updateGoal = asyncHandler(async (req: AuthRequest, res: Response) =
         where: { id },
         data: {
             ...data,
-            targetDate: new Date(data.targetDate)
         }
     });
     res.json(updated);
