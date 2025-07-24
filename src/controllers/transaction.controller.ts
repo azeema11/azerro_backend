@@ -2,17 +2,26 @@ import { Request, Response } from 'express';
 import prisma from '../utils/db';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { asyncHandler } from '../utils/asyncHandler';
+import { TransactionType } from '@prisma/client';
 
 export const getTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { type } = req.query;
+
+  const whereClause: any = { userId: req.userId };
+
+  if (type && (type === TransactionType.INCOME || type === TransactionType.EXPENSE)) {
+    whereClause.type = type;
+  }
+
   const transactions = await prisma.transaction.findMany({
-    where: { userId: req.userId },
+    where: whereClause,
     orderBy: { date: 'desc' },
   });
   res.json(transactions);
 });
 
 export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { amount, currency, category, description, date, bankAccountId } = req.body;
+  const { amount, currency, category, type, description, date, bankAccountId } = req.body;
 
   if (!amount || !currency || !category || !date) {
     return res.status(400).json({ error: 'Amount, currency, category, and date are required' });
@@ -24,6 +33,7 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
       amount,
       currency,
       category,
+      type: type || TransactionType.EXPENSE, // Default to EXPENSE if not provided
       description,
       date: new Date(date),
       bankAccountId,

@@ -84,6 +84,7 @@ CurrencyRate (standalone)
 | amount | Float | NOT NULL | Transaction amount |
 | currency | String | NOT NULL | Transaction currency |
 | category | Category | NOT NULL | Transaction category (enum) |
+| type | TransactionType | NOT NULL, DEFAULT: EXPENSE | Transaction type (INCOME/EXPENSE) |
 | description | String | NULLABLE | Transaction description |
 | date | DateTime | NOT NULL | Transaction date |
 | bankAccountId | UUID | FOREIGN KEY, NULLABLE | Associated bank account |
@@ -188,6 +189,11 @@ Budget and recurring periods:
 - `MONTHLY` - Monthly period
 - `ANNUAL` - Annual period
 
+### TransactionType
+Types of financial transactions:
+- `INCOME` - Money coming in (salary, dividends, gifts, etc.)
+- `EXPENSE` - Money going out (purchases, bills, transfers, etc.)
+
 ## Key Relationships
 
 1. **User-Centric Design**: All primary entities are linked to the User table
@@ -215,5 +221,26 @@ The database has evolved through several migrations:
 5. **Goals System** (20250614105420): Added financial goals
 6. **User Enhancements** (20250614112314-20250614113100): Added user fields and names
 7. **Holdings Names** (20250614154131): Added human-readable names to holdings
+8. **Transaction Types** (20250724091715): Added TransactionType enum and type field for income/expense classification
 
-This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, and goal setting capabilities. 
+This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, goal setting, and financial reporting capabilities.
+
+## 🆕 Recent Schema Enhancements
+
+### Transaction Type Classification (v1.1)
+- **New Enum**: `TransactionType` with INCOME and EXPENSE values
+- **Enhanced Transaction Model**: Added `type` field with EXPENSE default
+- **Backward Compatibility**: All existing transactions automatically classified as EXPENSE
+- **Migration Applied**: 20250724091715_add_transaction_type
+
+### Financial Analytics Foundation
+- **Category Grouping**: Enhanced for expense summary reporting
+- **Date Range Queries**: Optimized for time-based financial analysis
+- **Type-Based Filtering**: Enables income vs expense separation for insights
+- **Aggregation Support**: Database-level calculations for reporting efficiency
+
+### Data Integrity Features
+- **Automatic Timestamps**: All entities track creation and modification times
+- **UUID Primary Keys**: Enhanced security and distribution across all tables
+- **Referential Integrity**: Proper foreign key relationships with cascade handling
+- **Default Values**: Sensible defaults for optional fields to ensure data consistency 
