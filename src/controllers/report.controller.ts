@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { getAssetAllocation, getBudgetVsActual, getCategoryBreakdown, getExpenseSummary, getMonthlyIncomeVsExpense } from "../services/reports.service";
+import { getAssetAllocation, getBudgetVsActual, getCategoryBreakdown, getExpenseSummary, getGoalProgressReport, getMonthlyIncomeVsExpense } from "../services/report.service";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { asyncHandler } from "../utils/asyncHandler";
 
@@ -59,5 +59,16 @@ export const budgetVsActual = asyncHandler(async (req: AuthRequest, res: Respons
     }
 
     const report = await getBudgetVsActual(userId, period as 'MONTHLY' | 'WEEKLY' | 'ANNUAL' || 'MONTHLY');
+    res.json(report);
+});
+
+export const goalProgress = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.userId;
+
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const report = await getGoalProgressReport(userId);
     res.json(report);
 });

@@ -13,7 +13,7 @@ import prisma from './utils/db';
 import { scheduleCurrencyRateRefresh } from './jobs/refresh_currency_rates.job';
 import { ensureCurrencyRatesExist } from './services/currency_rates.service';
 import { scheduleHoldingRefresh } from './jobs/refresh_holdings.job';
-import reportsRouter from './routes/reports.routes';
+import reportsRouter from './routes/report.routes';
 
 dotenv.config();
 

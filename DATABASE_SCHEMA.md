@@ -234,10 +234,14 @@ This schema supports a comprehensive personal finance management system with mul
 - **Migration Applied**: 20250724091715_add_transaction_type
 
 ### Financial Analytics Foundation
-- **Category Grouping**: Enhanced for expense summary reporting
-- **Date Range Queries**: Optimized for time-based financial analysis
-- **Type-Based Filtering**: Enables income vs expense separation for insights
-- **Aggregation Support**: Database-level calculations for reporting efficiency
+- **Category Grouping**: Enhanced for expense summary and category breakdown reporting
+- **Date Range Queries**: Optimized for time-based financial analysis with accurate date calculations
+- **Type-Based Filtering**: Enables income vs expense separation for comprehensive insights
+- **Aggregation Support**: Database-level calculations for reporting efficiency across all report types
+- **Goal Timeline Analysis**: Consistent time calculations with logical overdue handling and realistic planning
+- **Portfolio Analytics**: Asset allocation calculations with multi-currency support
+- **Budget Variance Analysis**: Database support for budget vs actual spending comparisons
+- **Progress Tracking**: Goal completion percentages and timeline analysis capabilities
 
 ### Data Integrity Features
 - **Automatic Timestamps**: All entities track creation and modification times

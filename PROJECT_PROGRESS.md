@@ -119,9 +119,12 @@ The application has reached a **mature development stage** with most core functi
 
 **Advanced Features**:
 - **Smart Conflict Detection**: Analyzes if user can achieve all goals based on monthly income
-- **Monthly Breakdown**: Calculates required monthly savings per goal
+- **Accurate Time Calculations**: Uses precise date math with consistent day-to-month conversion (30.44 avg)
+- **Logical Overdue Handling**: Excludes overdue and due-today goals from monthly planning
+- **Realistic Monthly Requirements**: No artificially high requirements for short-term goals
+- **Monthly Breakdown**: Calculates required monthly savings per goal with accurate time remaining
 - **Over-budget Alerts**: Shows how much user is over budget
-- **Timeline Analysis**: Considers months remaining for each goal
+- **Enhanced Timeline Analysis**: Provides days remaining with months equivalent for transparency
 
 ### 🌍 Currency Management ✅ **COMPLETE**
 **Implementation**: Robust multi-currency support with real-time rates
@@ -152,20 +155,27 @@ The application has reached a **mature development stage** with most core functi
 **Job Schedule**: `0 */6 * * *` (Every 6 hours)
 
 ### 📊 Reports & Analytics ✅ **COMPLETE**
-**Implementation**: Financial reporting system with expense analysis
+**Implementation**: Comprehensive financial reporting system with multi-faceted analysis
 
 **What's Working**:
-- ✅ **Expense Summary Reports**: Category-wise expense breakdown
-- ✅ **Date Range Filtering**: Custom date range analysis
+- ✅ **Expense Summary Reports**: Category-wise expense breakdown with date filtering
+- ✅ **Income vs Expense Analysis**: Monthly income vs expense comparison trends
+- ✅ **Category Breakdown**: Detailed spending patterns by transaction category
+- ✅ **Asset Allocation**: Investment portfolio distribution and allocation analysis
+- ✅ **Budget vs Actual**: Budget performance tracking and variance analysis
+- ✅ **Goal Progress Tracking**: Financial goals progress monitoring with timeline analysis
+- ✅ **Date Range Filtering**: Custom date range analysis across all reports
 - ✅ **Transaction Type Integration**: Leverages INCOME/EXPENSE classification
-- ✅ **Category Analysis**: Spending patterns by transaction category
-- ✅ **Total Calculations**: Aggregated spending insights
+- ✅ **Multi-Currency Support**: Reports handle multiple currencies appropriately
 
 **Report Features**:
-- Expense totals by category
-- Custom date range filtering (`?start=YYYY-MM-DD&end=YYYY-MM-DD`)
-- Automatic transaction type filtering (expenses only)
-- Category-wise spending breakdown
+- **Expense totals by category** with custom date filtering
+- **Monthly income vs expense trends** for financial health monitoring
+- **Investment portfolio allocation** across different asset types and platforms
+- **Budget performance analysis** with variance calculations
+- **Goal progress tracking** with completion percentages and timeline analysis
+- **Category-wise spending breakdown** for expense optimization
+- **Multi-currency reporting** with proper conversion handling
 
 ## 🔧 Infrastructure & Quality
 
@@ -238,12 +248,17 @@ DELETE /goals/:id       - Delete goal
 PUT /settings/preferences - Update user preferences
 ```
 
-### Reports (1 endpoint)
+### Reports (6 endpoints)
 ```
-GET /reports/expenses-summary - Generate expense summary reports with date filtering
+GET /reports/expenses-summary      - Generate expense summary reports with date filtering
+GET /reports/monthly-income-expense - Monthly income vs expense comparison
+GET /reports/category-breakdown    - Category-wise spending breakdown
+GET /reports/asset-allocation      - Investment portfolio allocation analysis
+GET /reports/budget-vs-actual      - Budget vs actual spending comparison
+GET /reports/goal-progress         - Financial goals progress tracking
 ```
 
-**Total: 24 API endpoints** covering all core personal finance functionality
+**Total: 29 API endpoints** covering all core personal finance functionality
 
 ### Recent Enhancements (Latest Updates)
 
@@ -255,16 +270,22 @@ GET /reports/expenses-summary - Generate expense summary reports with date filte
 - ✅ **Controller Updates**: Enhanced with TypeScript enum support
 
 #### 📊 Reports & Analytics Implementation
-- ✅ **Reports Router**: New /reports endpoint family
+- ✅ **Reports Router**: New /reports endpoint family (6 endpoints)
 - ✅ **Expense Summary**: GET /reports/expenses-summary with date filtering
-- ✅ **Category Analysis**: Spending breakdown by transaction categories
+- ✅ **Income vs Expense**: GET /reports/monthly-income-expense for monthly comparisons
+- ✅ **Category Analysis**: GET /reports/category-breakdown for spending patterns
+- ✅ **Asset Allocation**: GET /reports/asset-allocation for portfolio analysis
+- ✅ **Budget Analysis**: GET /reports/budget-vs-actual for budget tracking
+- ✅ **Goal Progress**: GET /reports/goal-progress for financial goals tracking
 - ✅ **Service Layer**: Integrated with TransactionType for accurate reporting
 - ✅ **AsyncHandler Pattern**: Consistent error handling across all endpoints
 
 #### 🔧 Technical Improvements
 - ✅ **AsyncHandler Standardization**: All 24 controller functions now use asyncHandler
+- ✅ **Date Utilities Enhancement**: Fixed critical accuracy issues in date calculations and simplified API
+- ✅ **Goal Analysis Logic Fix**: Fixed critical calculation issues and improved overdue handling
 - ✅ **Documentation Updates**: Comprehensive updates across all documentation files
-- ✅ **API Endpoint Growth**: Expanded from 23 to 24 total endpoints
+- ✅ **API Endpoint Growth**: Expanded from 23 to 29 total endpoints
 - ✅ **Type Safety**: Enhanced TypeScript integration with Prisma Client
 
 ## 🎯 Features NOT Yet Implemented
@@ -328,7 +349,7 @@ GET /reports/expenses-summary - Generate expense summary reports with date filte
 | Financial Goals | ✅ Complete | 100% | Advanced conflict detection |
 | Currency System | ✅ Complete | 100% | Real-time rates with fallbacks |
 | Background Jobs | ✅ Complete | 100% | Automated data updates |
-| Reports & Analytics | ✅ Complete | 100% | Expense summary and category analysis |
+| Reports & Analytics | ✅ Complete | 100% | 6 comprehensive reports including goal progress tracking |
 | Budget Management | 🔄 Planned | 0% | Database schema ready |
 | Planned Events | 🔄 Planned | 0% | Database schema ready |
 | Assistant System | 🔄 Planned | 0% | Database schema ready |

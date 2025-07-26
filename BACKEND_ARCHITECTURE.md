@@ -220,7 +220,12 @@ DELETE /goals/:id               - Delete goal
 
 PUT  /settings/preferences      - Update user preferences
 
-GET  /reports/expenses-summary   - Generate expense summary reports
+GET  /reports/expenses-summary      - Generate expense summary reports with date filtering
+GET  /reports/monthly-income-expense - Monthly income vs expense comparison trends
+GET  /reports/category-breakdown    - Category-wise spending breakdown analysis
+GET  /reports/asset-allocation      - Investment portfolio allocation analysis
+GET  /reports/budget-vs-actual      - Budget vs actual spending comparison
+GET  /reports/goal-progress         - Financial goals progress tracking
 ```
 
 ## 🔄 Business Logic Flow
@@ -423,14 +428,24 @@ This architecture provides a robust, scalable foundation for the Azerro personal
 - **Service Level**: Integrated transaction type logic in reporting services
 - **Controller Level**: Updated request handling with TypeScript enum support
 
+### Date Utilities System Overhaul
+- **API Simplification**: Replaced inaccurate `monthsBetween` with calendar-aware implementation
+- **Accuracy Enhancement**: Fixed critical issues with leap years and varying month lengths
+- **Edge Case Handling**: Added support for overdue goals and short-term planning
+- **Utility Expansion**: Added `dateDifference()` and `formatDateDifference()` for comprehensive date analysis
+
 ### Reports & Analytics Architecture
-- **Dedicated Router**: `/reports` endpoint family with protected routes
-- **Service Layer**: `reports.service.ts` with aggregation logic
-- **Controller Integration**: AsyncHandler pattern with error boundaries
-- **Database Optimization**: Efficient GROUP BY queries for category analysis
+- **Comprehensive Router**: `/reports` endpoint family (6 endpoints) with protected routes
+- **Service Layer**: `report.service.ts` with multi-faceted aggregation logic
+- **Controller Integration**: AsyncHandler pattern with error boundaries across all report types
+- **Database Optimization**: Efficient GROUP BY queries for category analysis, goal tracking, and portfolio insights
+- **Goal Progress Integration**: Advanced timeline analysis with progress percentages and completion tracking
+- **Multi-Currency Reporting**: Proper currency conversion handling across all report types
 
 ### Technical Standards Applied
 - **100% AsyncHandler Coverage**: All 24 controller functions use consistent error handling
+- **Date Calculation Accuracy**: Fixed critical issues with leap years and varying month lengths, simplified API
+- **Enhanced Goal Analytics**: Fixed critical calculation logic with consistent time handling and realistic planning
 - **TypeScript Enhancement**: Full integration with Prisma Client v4.16.2
 - **Migration Management**: Seamless database evolution with backward compatibility
 - **API Documentation**: Complete endpoint coverage with request/response examples 

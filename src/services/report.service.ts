@@ -1,6 +1,7 @@
 import { TransactionType } from "@prisma/client";
 import prisma from "../utils/db";
 import { convertCurrencyFromDB } from "../utils/currency";
+import { daysBetween } from "../utils/date";
 
 export async function getExpenseSummary(userId: string, start?: string, end?: string) {
     const startDate = start ? new Date(start) : new Date("2000-01-01");
@@ -191,3 +192,31 @@ export async function getBudgetVsActual(userId: string, period: 'MONTHLY' | 'WEE
         result,
     };
 }
+
+export async function getGoalProgressReport(userId: string) {
+    const goals = await prisma.goal.findMany({
+      where: { userId },
+      orderBy: { targetDate: "asc" },
+    });
+  
+    const today = new Date();
+  
+    return goals.map((goal) => {
+      const progress = goal.targetAmount === 0
+        ? 0
+        : Math.min((goal.savedAmount / goal.targetAmount) * 100, 100);
+  
+      const daysLeft = daysBetween(today, goal.targetDate);
+  
+      return {
+        id: goal.id,
+        name: goal.name,
+        targetAmount: goal.targetAmount,
+        savedAmount: goal.savedAmount,
+        currency: goal.currency,
+        targetDate: goal.targetDate,
+        progress: parseFloat(progress.toFixed(2)),
+        daysLeft,
+      };
+    });
+  }
