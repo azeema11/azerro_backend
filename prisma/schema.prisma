@@ -148,7 +148,9 @@ enum AccountType {
 enum Periodicity {
   WEEKLY
   MONTHLY
-  ANNUAL
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
 }
 
 model CurrencyRate {

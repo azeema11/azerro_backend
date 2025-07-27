@@ -30,3 +30,16 @@ export async function convertCurrencyFromDB(
     throw new Error(`Failed to convert currency from ${from} to ${to}`);
   }
 }
+
+export async function getTotalConverted(amountsWithCurrency: { amount: number, currency: string }[], baseCurrency: string): Promise<number> {
+  let total = 0;
+  for (const amountWithCurrency of amountsWithCurrency) {
+      const converted = await convertCurrencyFromDB(
+          amountWithCurrency.amount,
+          amountWithCurrency.currency,
+          baseCurrency
+      );
+      total += converted;
+  }
+  return total;
+}

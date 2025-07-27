@@ -286,6 +286,13 @@ export const serviceFunction = async (params) => {
 - **AsyncHandler**: Consistent error handling wrapper (`src/utils/async_handler.ts`)
 - **Currency Conversion**: Database-cached currency conversion (`src/utils/currency.ts`)
 - **Date Calculations**: Precise date math, timeline analysis, and frequency detection (`src/utils/date.ts`)
+  - `daysBetween()` - Calculate days between two dates
+  - `monthsBetween()` - Calculate months between two dates  
+  - `weeksBetween()` - Calculate weeks between two dates
+  - `dateDifference()` - Comprehensive date difference analysis
+  - `formatDateDifference()` - Human-readable date formatting
+  - `detectFrequency()` - Detect transaction frequency patterns
+  - `getPeriodDates()` - **NEW**: Get start/end dates for budget periods ✨
 - **Array Utilities**: Generic groupBy function for data aggregation (`src/utils/utils.ts`)
 - **Database Connection**: Prisma client management (`src/utils/db.ts`)
 - **Cryptographic**: SHA-256 hashing utilities (`src/utils/sha_256.ts`)
@@ -326,10 +333,17 @@ POST /goals/:id/contribute      - Add money to goal
 PUT  /goals/:id                 - Update goal
 DELETE /goals/:id               - Delete goal
 
-POST /budgets                    - Create budget ✨ NEW
+### Budget Management Routes (`/budgets`) ✨ **NEW**
+```
+POST /budgets                    - Create budget
+GET  /budgets                    - List user budgets  
+PUT  /budgets/:id                - Update budget
+DELETE /budgets/:id              - Delete budget
+GET  /budgets/performance        - Get budget vs actual performance
+```
 
-PUT  /settings/preferences      - Update user preferences
-
+### Reports Routes (`/reports`)
+```
 GET  /reports/expenses-summary      - Generate expense summary reports with date filtering
 GET  /reports/monthly-income-expense - Monthly income vs expense comparison trends
 GET  /reports/category-breakdown    - Category-wise spending breakdown analysis
@@ -337,6 +351,11 @@ GET  /reports/asset-allocation      - Investment portfolio allocation analysis w
 GET  /reports/budget-vs-actual      - Budget vs actual spending comparison
 GET  /reports/goal-progress         - Financial goals progress tracking
 GET  /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
+```
+
+### Settings Routes (`/settings`)
+```
+PUT  /settings/preferences      - Update user preferences
 ```
 
 ## 🔄 Business Logic Flow
@@ -380,9 +399,20 @@ graph TD
     A[Create Budget] --> B[Budget Service]
     B --> C[Validate Category & Period]
     C --> D[Store Budget]
-    D --> E[Budget vs Actual Analysis]
-    E --> F[Report Generation]
+    D --> E[Budget Performance Analysis]
+    E --> F[Get Period Dates]
+    F --> G[Query Transactions]
+    G --> H[Currency Conversion]
+    H --> I[Compare vs Budget]
+    I --> J[Return Analysis]
 ```
+
+**Budget Management Features**:
+1. **Budget Creation**: Set spending limits by category and period
+2. **Period Support**: WEEKLY, MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY
+3. **Performance Analysis**: Compare actual spending vs budgeted amounts
+4. **Multi-Currency**: Automatic conversion to user's base currency
+5. **Real-time Tracking**: Integration with transaction data
 
 ### 4. Currency Conversion Flow
 ```mermaid
@@ -599,10 +629,14 @@ NODE_ENV=production
 - **Maintainability**: Clean separation of HTTP concerns from business logic
 
 ### Budget Management System ✨ **NEW**
-- **Budget Service**: `budget.service.ts` with createNewBudget function
-- **Budget Controller**: Complete CRUD operations for budget management
-- **Database Integration**: Full Prisma integration with Category and Periodicity enums
-- **API Endpoint**: POST /budgets for budget creation
+- **Complete Budget CRUD**: Full budget creation, listing, updating, and deletion
+- **Budget Performance Analysis**: Real-time budget vs actual spending comparison
+- **Period Support**: WEEKLY, MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY periods
+- **API Integration**: 5 comprehensive budget endpoints (/budgets)
+- **Service Layer**: Complete `budget.service.ts` with all operations
+- **Date Utilities**: `getPeriodDates()` function for accurate period calculations
+- **Multi-Currency Support**: Automatic currency conversion in budget analysis
+- **Real-time Tracking**: Integration with transaction data for performance monitoring
 
 ### Authorization Enhancement ✨ **UPDATED**
 - **Controller-Level Auth**: Every protected endpoint explicitly checks req.userId

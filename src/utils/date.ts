@@ -1,3 +1,5 @@
+import { Periodicity } from "@prisma/client";
+
 export function daysBetween(from: Date, to: Date): number {
     // Calculate the time difference in milliseconds
     const timeDifference = to.getTime() - from.getTime();
@@ -106,9 +108,7 @@ export function formatDateDifference(from: Date, to: Date): string {
     return `${diff.months} month${diff.months !== 1 ? 's' : ''} ${diff.days} day${diff.days !== 1 ? 's' : ''}`;
 }
 
-type RecurrenceFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
-
-const frequencyThresholds: Record<RecurrenceFrequency, number> = {
+const frequencyThresholds: Record<Periodicity, number> = {
     WEEKLY: 7,
     MONTHLY: 31,
     QUARTERLY: 93,
@@ -116,7 +116,7 @@ const frequencyThresholds: Record<RecurrenceFrequency, number> = {
     YEARLY: 366,
 };
 
-export function detectFrequency(dates: Date[]): RecurrenceFrequency | null {
+export function detectFrequency(dates: Date[]): Periodicity | null {
     if (dates.length < 3) return null;
 
     const gaps = [];
@@ -132,4 +132,81 @@ export function detectFrequency(dates: Date[]): RecurrenceFrequency | null {
     if (avgGap <= frequencyThresholds.HALF_YEARLY) return "HALF_YEARLY";
     if (avgGap <= frequencyThresholds.YEARLY) return "YEARLY";
     return null;
+}
+
+/**
+ * Get the start and end dates for a given period
+ * @param period - The period type (WEEKLY, MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY)
+ * @param referenceDate - Optional reference date, defaults to current date
+ * @returns Object with start and end dates for the period
+ */
+export function getPeriodDates(period: Periodicity, referenceDate: Date = new Date()) {
+    const now = new Date(referenceDate);
+    let start: Date;
+    let end: Date;
+
+    switch (period) {
+        case 'WEEKLY':
+            // Start of current week (Monday)
+            start = new Date(now);
+            const dayOfWeek = start.getDay();
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 0, Monday = 1
+            start.setDate(start.getDate() - daysToMonday);
+            start.setHours(0, 0, 0, 0);
+
+            // End of current day
+            end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+            break;
+
+        case 'MONTHLY':
+            // Start of current month
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            start.setHours(0, 0, 0, 0);
+
+            // End of current day
+            end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+            break;
+
+        case 'QUARTERLY':
+            // Start of current quarter
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            start = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            start.setHours(0, 0, 0, 0);
+
+            // End of current day
+            end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+            break;
+
+        case 'HALF_YEARLY':
+            // Start of current half year (Jan 1 or Jul 1)
+            const halfYear = now.getMonth() < 6 ? 0 : 6;
+            start = new Date(now.getFullYear(), halfYear, 1);
+            start.setHours(0, 0, 0, 0);
+
+            // End of current day
+            end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+            break;
+
+        case 'YEARLY':
+            // Start of current year
+            start = new Date(now.getFullYear(), 0, 1);
+            start.setHours(0, 0, 0, 0);
+
+            // End of current day
+            end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+            break;
+
+        default:
+            throw new Error(`Invalid period: ${period}`);
+    }
+
+    return {
+        start,
+        end,
+    };
 }
