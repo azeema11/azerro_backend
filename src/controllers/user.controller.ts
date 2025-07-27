@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../utils/db";
 import { AuthRequest } from "../middlewares/auth.middleware";
-import { asyncHandler } from "../utils/asyncHandler";
+import { asyncHandler } from "../utils/async_handler";
 
 export const getUserProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.userId!;
@@ -19,7 +19,7 @@ export const getUserProfile = asyncHandler(async (req: AuthRequest, res: Respons
 
 export const updateUserPreferences = asyncHandler(async (req: AuthRequest, res: Response) => {
   const userId = req.userId!;
-  
+
   const { baseCurrency, monthlyIncome } = req.body;
 
   const updatedUser = await prisma.user.update({

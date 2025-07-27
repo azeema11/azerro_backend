@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/db';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { convertCurrencyFromDB } from '../utils/currency';
-import { asyncHandler } from '../utils/asyncHandler';
+import { asyncHandler } from '../utils/async_handler';
 import axios from 'axios';
 
 export const getHoldings = asyncHandler(async (req: AuthRequest, res: Response) => {

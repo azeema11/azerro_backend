@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/db';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { checkGoalConflicts } from '../services/goal.service';
-import { asyncHandler } from '../utils/asyncHandler';
+import { asyncHandler } from '../utils/async_handler';
 
 export const getGoals = asyncHandler(async (req: AuthRequest, res: Response) => {
     const goals = await prisma.goal.findMany({

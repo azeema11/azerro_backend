@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/db';
 import { AuthRequest } from '../middlewares/auth.middleware';
-import { asyncHandler } from '../utils/asyncHandler';
+import { asyncHandler } from '../utils/async_handler';
 
 export const createAccount = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, type, balance, currency } = req.body;

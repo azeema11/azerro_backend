@@ -105,3 +105,31 @@ export function formatDateDifference(from: Date, to: Date): string {
 
     return `${diff.months} month${diff.months !== 1 ? 's' : ''} ${diff.days} day${diff.days !== 1 ? 's' : ''}`;
 }
+
+type RecurrenceFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+
+const frequencyThresholds: Record<RecurrenceFrequency, number> = {
+    WEEKLY: 7,
+    MONTHLY: 31,
+    QUARTERLY: 93,
+    HALF_YEARLY: 186,
+    YEARLY: 366,
+};
+
+export function detectFrequency(dates: Date[]): RecurrenceFrequency | null {
+    if (dates.length < 3) return null;
+
+    const gaps = [];
+    for (let i = 1; i < dates.length; i++) {
+        const gap = Math.abs(daysBetween(dates[i], dates[i - 1]));
+        gaps.push(gap);
+    }
+    const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+
+    if (avgGap <= frequencyThresholds.WEEKLY) return "WEEKLY";
+    if (avgGap <= frequencyThresholds.MONTHLY) return "MONTHLY";
+    if (avgGap <= frequencyThresholds.QUARTERLY) return "QUARTERLY";
+    if (avgGap <= frequencyThresholds.HALF_YEARLY) return "HALF_YEARLY";
+    if (avgGap <= frequencyThresholds.YEARLY) return "YEARLY";
+    return null;
+}
