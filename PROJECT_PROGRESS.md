@@ -155,7 +155,7 @@ The application has reached a **mature development stage** with most core functi
 **Job Schedule**: `0 */6 * * *` (Every 6 hours)
 
 ### 📊 Reports & Analytics ✅ **COMPLETE**
-**Implementation**: Comprehensive financial reporting system with multi-faceted analysis
+**Implementation**: Comprehensive financial reporting system with multi-faceted analysis and pattern detection
 
 **What's Working**:
 - ✅ **Expense Summary Reports**: Category-wise expense breakdown with date filtering
@@ -164,6 +164,7 @@ The application has reached a **mature development stage** with most core functi
 - ✅ **Asset Allocation**: Investment portfolio distribution and allocation analysis
 - ✅ **Budget vs Actual**: Budget performance tracking and variance analysis
 - ✅ **Goal Progress Tracking**: Financial goals progress monitoring with timeline analysis
+- ✅ **Recurring Transaction Detection**: Automatic pattern recognition with frequency analysis
 - ✅ **Date Range Filtering**: Custom date range analysis across all reports
 - ✅ **Transaction Type Integration**: Leverages INCOME/EXPENSE classification
 - ✅ **Multi-Currency Support**: Reports handle multiple currencies appropriately
@@ -171,9 +172,10 @@ The application has reached a **mature development stage** with most core functi
 **Report Features**:
 - **Expense totals by category** with custom date filtering
 - **Monthly income vs expense trends** for financial health monitoring
-- **Investment portfolio allocation** across different asset types and platforms
+- **Investment portfolio allocation** with flexible grouping by asset type, platform, or ticker
 - **Budget performance analysis** with variance calculations
 - **Goal progress tracking** with completion percentages and timeline analysis
+- **Recurring pattern detection** with frequency classification (weekly, monthly, quarterly, etc.)
 - **Category-wise spending breakdown** for expense optimization
 - **Multi-currency reporting** with proper conversion handling
 
@@ -248,17 +250,18 @@ DELETE /goals/:id       - Delete goal
 PUT /settings/preferences - Update user preferences
 ```
 
-### Reports (6 endpoints)
+### Reports (7 endpoints)
 ```
 GET /reports/expenses-summary      - Generate expense summary reports with date filtering
 GET /reports/monthly-income-expense - Monthly income vs expense comparison
 GET /reports/category-breakdown    - Category-wise spending breakdown
-GET /reports/asset-allocation      - Investment portfolio allocation analysis
+GET /reports/asset-allocation      - Investment portfolio allocation analysis with flexible grouping
 GET /reports/budget-vs-actual      - Budget vs actual spending comparison
 GET /reports/goal-progress         - Financial goals progress tracking
+GET /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
 ```
 
-**Total: 29 API endpoints** covering all core personal finance functionality
+**Total: 30 API endpoints** covering all core personal finance functionality
 
 ### Recent Enhancements (Latest Updates)
 
@@ -270,22 +273,26 @@ GET /reports/goal-progress         - Financial goals progress tracking
 - ✅ **Controller Updates**: Enhanced with TypeScript enum support
 
 #### 📊 Reports & Analytics Implementation
-- ✅ **Reports Router**: New /reports endpoint family (6 endpoints)
+- ✅ **Reports Router**: New /reports endpoint family (7 endpoints)
 - ✅ **Expense Summary**: GET /reports/expenses-summary with date filtering
 - ✅ **Income vs Expense**: GET /reports/monthly-income-expense for monthly comparisons
 - ✅ **Category Analysis**: GET /reports/category-breakdown for spending patterns
-- ✅ **Asset Allocation**: GET /reports/asset-allocation for portfolio analysis
+- ✅ **Asset Allocation**: GET /reports/asset-allocation for portfolio analysis with flexible grouping (assetType|platform|ticker)
 - ✅ **Budget Analysis**: GET /reports/budget-vs-actual for budget tracking
 - ✅ **Goal Progress**: GET /reports/goal-progress for financial goals tracking
+- ✅ **Recurring Patterns**: GET /reports/recurring-transactions for automatic pattern detection
 - ✅ **Service Layer**: Integrated with TransactionType for accurate reporting
 - ✅ **AsyncHandler Pattern**: Consistent error handling across all endpoints
 
 #### 🔧 Technical Improvements
-- ✅ **AsyncHandler Standardization**: All 24 controller functions now use asyncHandler
+- ✅ **AsyncHandler Standardization**: All 30 controller functions use async_handler.ts with consistent error handling
+- ✅ **Recurring Pattern Detection**: Automatic transaction pattern recognition with frequency analysis
+- ✅ **Utility Functions Expansion**: Added generic groupBy utility for flexible data aggregation
+- ✅ **Enhanced Asset Allocation**: Flexible grouping by assetType, platform, or ticker with query parameters
 - ✅ **Date Utilities Enhancement**: Fixed critical accuracy issues in date calculations and simplified API
 - ✅ **Goal Analysis Logic Fix**: Fixed critical calculation issues and improved overdue handling
 - ✅ **Documentation Updates**: Comprehensive updates across all documentation files
-- ✅ **API Endpoint Growth**: Expanded from 23 to 29 total endpoints
+- ✅ **API Endpoint Growth**: Expanded from 23 to 30 total endpoints
 - ✅ **Type Safety**: Enhanced TypeScript integration with Prisma Client
 
 ## 🎯 Features NOT Yet Implemented
@@ -349,7 +356,7 @@ GET /reports/goal-progress         - Financial goals progress tracking
 | Financial Goals | ✅ Complete | 100% | Advanced conflict detection |
 | Currency System | ✅ Complete | 100% | Real-time rates with fallbacks |
 | Background Jobs | ✅ Complete | 100% | Automated data updates |
-| Reports & Analytics | ✅ Complete | 100% | 6 comprehensive reports including goal progress tracking |
+| Reports & Analytics | ✅ Complete | 100% | 7 comprehensive reports including recurring pattern detection |
 | Budget Management | 🔄 Planned | 0% | Database schema ready |
 | Planned Events | 🔄 Planned | 0% | Database schema ready |
 | Assistant System | 🔄 Planned | 0% | Database schema ready |

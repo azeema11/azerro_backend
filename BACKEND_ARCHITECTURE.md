@@ -67,7 +67,7 @@ src/
 ├── routes/              # API endpoint definitions
 ├── services/            # Business logic and external integrations
 ├── middlewares/         # Request processing middleware
-├── utils/               # Utility functions and helpers
+├── utils/               # Utility functions and helpers (async_handler, currency, date, utils, etc.)
 ├── jobs/                # Background job definitions
 └── scripts/             # Database seeding and maintenance
 ```
@@ -155,7 +155,7 @@ export const authMiddleware = (req, res, next) => {
 
 ### 3. Error Handling Strategy
 
-#### Async Handler Pattern (`src/utils/asyncHandler.ts`)
+#### Async Handler Pattern (`src/utils/async_handler.ts`)
 ```typescript
 // Wraps async functions to catch Promise rejections
 export const asyncHandler = (fn: AsyncFunction) => {
@@ -183,6 +183,14 @@ export const asyncHandler = (fn: AsyncFunction) => {
 - **Soft Relationships**: Nullable foreign keys for data integrity
 - **Automatic Timestamps**: Creation and update tracking
 - **Multi-Currency Support**: Flexible currency handling
+
+#### Utility Functions
+- **AsyncHandler**: Consistent error handling wrapper (`src/utils/async_handler.ts`)
+- **Currency Conversion**: Database-cached currency conversion (`src/utils/currency.ts`)
+- **Date Calculations**: Precise date math, timeline analysis, and frequency detection (`src/utils/date.ts`)
+- **Array Utilities**: Generic groupBy function for data aggregation (`src/utils/utils.ts`)
+- **Database Connection**: Prisma client management (`src/utils/db.ts`)
+- **Cryptographic**: SHA-256 hashing utilities (`src/utils/sha_256.ts`)
 
 ## 🔌 API Endpoints Structure
 
@@ -223,9 +231,10 @@ PUT  /settings/preferences      - Update user preferences
 GET  /reports/expenses-summary      - Generate expense summary reports with date filtering
 GET  /reports/monthly-income-expense - Monthly income vs expense comparison trends
 GET  /reports/category-breakdown    - Category-wise spending breakdown analysis
-GET  /reports/asset-allocation      - Investment portfolio allocation analysis
+GET  /reports/asset-allocation      - Investment portfolio allocation analysis with flexible grouping (?groupBy=assetType|platform|ticker)
 GET  /reports/budget-vs-actual      - Budget vs actual spending comparison
 GET  /reports/goal-progress         - Financial goals progress tracking
+GET  /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
 ```
 
 ## 🔄 Business Logic Flow
@@ -435,12 +444,15 @@ This architecture provides a robust, scalable foundation for the Azerro personal
 - **Utility Expansion**: Added `dateDifference()` and `formatDateDifference()` for comprehensive date analysis
 
 ### Reports & Analytics Architecture
-- **Comprehensive Router**: `/reports` endpoint family (6 endpoints) with protected routes
-- **Service Layer**: `report.service.ts` with multi-faceted aggregation logic
+- **Comprehensive Router**: `/reports` endpoint family (7 endpoints) with protected routes
+- **Service Layer**: `report.service.ts` with multi-faceted aggregation logic and pattern detection
 - **Controller Integration**: AsyncHandler pattern with error boundaries across all report types
 - **Database Optimization**: Efficient GROUP BY queries for category analysis, goal tracking, and portfolio insights
 - **Goal Progress Integration**: Advanced timeline analysis with progress percentages and completion tracking
+- **Recurring Pattern Detection**: Automatic transaction pattern recognition with frequency classification
 - **Multi-Currency Reporting**: Proper currency conversion handling across all report types
+- **Flexible Asset Grouping**: Dynamic portfolio analysis with configurable grouping parameters
+- **Generic Utility Integration**: Leverages reusable groupBy function for efficient data aggregation
 
 ### Technical Standards Applied
 - **100% AsyncHandler Coverage**: All 24 controller functions use consistent error handling

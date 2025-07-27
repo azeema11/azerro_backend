@@ -14,7 +14,7 @@ The `asyncHandler` utility wrapper provides:
 
 ## 📁 **Implementation Details**
 
-### AsyncHandler Utility (`src/utils/asyncHandler.ts`)
+### AsyncHandler Utility (`src/utils/async_handler.ts`)
 ```typescript
 import { Request, Response, NextFunction } from 'express';
 
@@ -94,7 +94,8 @@ export const createGoal = asyncHandler(async (req: AuthRequest, res: Response) =
 - ✅ `categoryBreakdown` - Category-wise spending breakdown reporting
 - ✅ `assetAllocation` - Investment portfolio allocation analysis
 - ✅ `budgetVsActual` - Budget vs actual spending comparison tracking
-- ✅ `goalProgress` - Financial goals progress tracking *(Recently implemented)*
+- ✅ `goalProgress` - Financial goals progress tracking
+- ✅ `recurringTransactions` - Detect recurring transaction patterns *(Recently implemented)*
 
 ## 🔧 **Error Handling Flow**
 
@@ -140,7 +141,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 Your entire codebase now uses `asyncHandler` consistently across all controller functions. This provides:
 
-- **29 Controller Functions** properly wrapped with asyncHandler (including comprehensive Reports controller)
+- **30 Controller Functions** properly wrapped with asyncHandler (including comprehensive Reports controller)
 - **Consistent Error Handling** across all API endpoints
 - **Production-Ready** error responses
 - **Clean, Maintainable Code** structure
@@ -149,9 +150,9 @@ Your entire codebase now uses `asyncHandler` consistently across all controller 
 ## 🆕 Recent Updates
 
 ### Reports Controller Integration
-- ✅ **Comprehensive Controller**: `report.controller.ts` with 6 report endpoints using asyncHandler
-- ✅ **Multi-Faceted Reporting**: Expense summary, income/expense analysis, category breakdown, asset allocation, budget comparison, and goal progress
-- ✅ **Goal Progress Tracking**: New endpoint for financial goals progress monitoring with timeline analysis
+- ✅ **Comprehensive Controller**: `report.controller.ts` with 7 report endpoints using asyncHandler
+- ✅ **Multi-Faceted Reporting**: Expense summary, income/expense analysis, category breakdown, asset allocation, budget comparison, goal progress, and recurring pattern detection
+- ✅ **Recurring Transaction Detection**: New endpoint for automatic transaction pattern recognition with frequency analysis
 - ✅ **Consistent Pattern**: All report endpoints follow same asyncHandler structure
 - ✅ **Error Handling**: Complete integration with global error handling system across all report types
 

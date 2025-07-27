@@ -242,6 +242,8 @@ This schema supports a comprehensive personal finance management system with mul
 - **Portfolio Analytics**: Asset allocation calculations with multi-currency support
 - **Budget Variance Analysis**: Database support for budget vs actual spending comparisons
 - **Progress Tracking**: Goal completion percentages and timeline analysis capabilities
+- **Pattern Detection**: Transaction pattern recognition for recurring payment identification
+- **Frequency Analysis**: Automatic classification of transaction recurrence (weekly, monthly, quarterly, etc.)
 
 ### Data Integrity Features
 - **Automatic Timestamps**: All entities track creation and modification times
