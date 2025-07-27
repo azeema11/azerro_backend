@@ -31,15 +31,18 @@ The Azerro backend follows a **layered architecture pattern** with clear separat
 │                Controller Layer                     │
 │        • Request/Response Handling                  │
 │        • Input Validation                           │
-│        • Business Logic Orchestration               │
+│        • HTTP Status Code Management                │
+│        • Authorization Checks                       │
 └─────────────────────────────────────────────────────┘
                             │
 ┌─────────────────────────────────────────────────────┐
 │                Service Layer                        │
 │         • Business Logic                            │
+│         • Database Operations                       │
 │         • External API Integration                  │
 │         • Currency Conversion                       │
 │         • Price Updates                             │
+│         • Error Handling                            │
 └─────────────────────────────────────────────────────┘
                             │
 ┌─────────────────────────────────────────────────────┐
@@ -63,9 +66,9 @@ The Azerro backend follows a **layered architecture pattern** with clear separat
 
 ```
 src/
-├── controllers/          # Request handlers and response logic
+├── controllers/          # Request handlers and response logic (HTTP layer)
+├── services/            # Business logic and database operations
 ├── routes/              # API endpoint definitions
-├── services/            # Business logic and external integrations
 ├── middlewares/         # Request processing middleware
 ├── utils/               # Utility functions and helpers (async_handler, currency, date, utils, etc.)
 ├── jobs/                # Background job definitions
@@ -80,15 +83,18 @@ sequenceDiagram
     participant Client
     participant Express
     participant AuthController
+    participant AuthService
     participant Database
     participant JWT
 
     Client->>Express: POST /auth/signup or /auth/login
     Express->>AuthController: Route to auth handler
-    AuthController->>Database: Check user credentials
-    Database-->>AuthController: User data
-    AuthController->>JWT: Generate token
-    JWT-->>AuthController: Signed token
+    AuthController->>AuthService: Call authentication service
+    AuthService->>Database: Check user credentials
+    Database-->>AuthService: User data
+    AuthService->>JWT: Generate token
+    JWT-->>AuthService: Signed token
+    AuthService-->>AuthController: Return result
     AuthController-->>Client: Return token + userId
 ```
 
@@ -105,11 +111,11 @@ sequenceDiagram
     Client->>Express: Request with Bearer token
     Express->>AuthMiddleware: Validate JWT token
     AuthMiddleware->>Controller: Add userId to request
-    Controller->>Service: Business logic
+    Controller->>Service: Business logic with parameters
     Service->>Database: Data operations
     Database-->>Service: Results
     Service-->>Controller: Processed data
-    Controller-->>Client: JSON response
+    Controller-->>Client: JSON response with status code
 ```
 
 ## 🔧 Core Components
@@ -132,7 +138,85 @@ sequenceDiagram
 5. Register API routes
 6. Start server on specified port
 
-### 2. Authentication System
+### 2. Service Layer Architecture ✨ **NEW**
+
+#### Service Layer Pattern
+The application now implements a comprehensive service layer that separates business logic from HTTP handling:
+
+```typescript
+// Service layer handles all business logic and database operations
+export const createTransaction = async (
+  userId: string,
+  amount: number,
+  currency: string,
+  category: Category,
+  date: string,
+  type?: TransactionType,
+  description?: string,
+  bankAccountId?: string
+) => {
+  try {
+    // Validation logic
+    if (!amount || !currency || !category || !date) {
+      throw new Error('Amount, currency, category, and date are required');
+    }
+
+    // Database operation
+    const txn = await prisma.transaction.create({
+      data: { /* ... */ }
+    });
+
+    return txn;
+  } catch (err) {
+    console.error('Failed to create transaction:', err);
+    throw err;
+  }
+};
+```
+
+#### Service Files Overview
+- **`auth.service.ts`** - User authentication and registration
+- **`bank_account.service.ts`** - Bank account CRUD operations
+- **`budget.service.ts`** - Budget management operations
+- **`goal.service.ts`** - Financial goals management
+- **`holding.service.ts`** - Investment holdings with price fetching
+- **`transaction.service.ts`** - Transaction management
+- **`user.service.ts`** - User profile and preferences
+- **`report.service.ts`** - Analytics and reporting
+- **`currency_rates.service.ts`** - Currency conversion
+- **`price.service.ts`** - Asset price management
+
+#### Controller Pattern ✨ **UPDATED**
+Controllers now focus solely on HTTP concerns and delegate all business logic to services:
+
+```typescript
+export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Authorization check
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Extract parameters
+  const { amount, currency, category, type, description, date, bankAccountId } = req.body;
+
+  // Delegate to service
+  const txn = await createTransactionService(
+    req.userId,
+    amount,
+    currency,
+    category,
+    date,
+    type,
+    description,
+    bankAccountId
+  );
+
+  // Return response with proper status code
+  res.status(201).json(txn);
+});
+```
+
+### 3. Authentication System
 
 #### JWT-Based Authentication
 - **Token Generation**: 7-day expiry tokens
@@ -153,7 +237,7 @@ export const authMiddleware = (req, res, next) => {
 }
 ```
 
-### 3. Error Handling Strategy
+### 4. Error Handling Strategy
 
 #### Async Handler Pattern (`src/utils/async_handler.ts`)
 ```typescript
@@ -165,12 +249,26 @@ export const asyncHandler = (fn: AsyncFunction) => {
 };
 ```
 
+#### Service Layer Error Handling ✨ **NEW**
+All services implement consistent error handling:
+```typescript
+export const serviceFunction = async (params) => {
+  try {
+    // Business logic
+    return result;
+  } catch (err) {
+    console.error('Failed to perform operation:', err);
+    throw err; // Re-throw for controller handling
+  }
+};
+```
+
 #### Global Error Handler
 - Development: Full stack traces
 - Production: Clean error messages
 - Centralized error logging
 
-### 4. Database Architecture
+### 5. Database Architecture
 
 #### Prisma ORM Integration (`src/utils/db.ts`)
 - Single Prisma client instance
@@ -212,6 +310,7 @@ DELETE /bank-accounts/:id        - Delete account
 
 GET  /transactions               - List transactions (with optional type filtering)
 POST /transactions               - Create transaction (with type classification)
+PUT  /transactions/:id           - Update transaction
 DELETE /transactions/:id         - Delete transaction
 
 GET  /holdings                   - List investment holdings
@@ -224,7 +323,10 @@ POST /goals                      - Create new goal
 GET  /goals/conflicts           - Check goal conflicts
 GET  /goals/:id                 - Get specific goal
 POST /goals/:id/contribute      - Add money to goal
+PUT  /goals/:id                 - Update goal
 DELETE /goals/:id               - Delete goal
+
+POST /budgets                    - Create budget ✨ NEW
 
 PUT  /settings/preferences      - Update user preferences
 
@@ -239,15 +341,31 @@ GET  /reports/recurring-transactions - Detect recurring transaction patterns wit
 
 ## 🔄 Business Logic Flow
 
-### 1. Holdings Management Flow
+### 1. Service Layer Integration Flow ✨ **NEW**
 ```mermaid
 graph TD
-    A[Create Holding] --> B[Fetch Current Price]
-    B --> C[Convert to Base Currency]
-    C --> D[Store in Database]
-    D --> E[Background Job Updates]
-    E --> F[Price Refresh Every 6 Hours]
-    F --> G[Update Converted Values]
+    A[HTTP Request] --> B[Controller]
+    B --> C{Auth Check}
+    C -->|Valid| D[Extract Parameters]
+    C -->|Invalid| E[Return 401]
+    D --> F[Call Service Function]
+    F --> G[Service Validation]
+    G --> H[Database Operation]
+    H --> I[Return Result]
+    I --> J[Controller Response]
+    J --> K[HTTP Response with Status Code]
+```
+
+### 2. Holdings Management Flow
+```mermaid
+graph TD
+    A[Create Holding] --> B[Holdings Service]
+    B --> C[Fetch Current Price]
+    C --> D[Convert to Base Currency]
+    D --> E[Store in Database]
+    E --> F[Background Job Updates]
+    F --> G[Price Refresh Every 6 Hours]
+    G --> H[Update Converted Values]
 ```
 
 **Implementation Details**:
@@ -256,7 +374,17 @@ graph TD
 3. **Asset Types**: Stocks (Finnhub), Crypto (CoinGecko), Metals (metals.live)
 4. **Currency Conversion**: Automatic conversion to user's base currency
 
-### 2. Currency Conversion Flow
+### 3. Budget Management Flow ✨ **NEW**
+```mermaid
+graph TD
+    A[Create Budget] --> B[Budget Service]
+    B --> C[Validate Category & Period]
+    C --> D[Store Budget]
+    D --> E[Budget vs Actual Analysis]
+    E --> F[Report Generation]
+```
+
+### 4. Currency Conversion Flow
 ```mermaid
 graph TD
     A[Currency Request] --> B{Same Currency?}
@@ -270,15 +398,16 @@ graph TD
 
 **Implementation**: Database-cached exchange rates with fallback handling
 
-### 3. Goal Conflict Detection Flow
+### 5. Goal Conflict Detection Flow
 ```mermaid
 graph TD
-    A[Check Goal Conflicts] --> B[Get Active Goals]
-    B --> C[Calculate Monthly Requirements]
-    C --> D[Compare with Monthly Income]
-    D --> E{Over Budget?}
-    E -->|Yes| F[Return Conflict Details]
-    E -->|No| G[Return No Conflicts]
+    A[Check Goal Conflicts] --> B[Goal Service]
+    B --> C[Get Active Goals]
+    C --> D[Calculate Monthly Requirements]
+    D --> E[Compare with Monthly Income]
+    E --> F{Over Budget?}
+    F -->|Yes| G[Return Conflict Details]
+    F -->|No| H[Return No Conflicts]
 ```
 
 ## ⚙️ Background Jobs Architecture
@@ -317,8 +446,9 @@ graph TD
 - **Password Hashing**: bcrypt with automatic salt generation
 - **Token Validation**: Middleware-level verification
 
-### 2. Authorization Patterns
+### 2. Authorization Patterns ✨ **ENHANCED**
 - **User Isolation**: All resources filtered by `userId`
+- **Controller-Level Checks**: Explicit authorization validation in each controller
 - **Request Validation**: Input sanitization and type checking
 - **Error Handling**: No sensitive data leakage
 
@@ -329,39 +459,72 @@ graph TD
 
 ## 🔄 Data Flow Patterns
 
-### 1. CRUD Operations Pattern
+### 1. Service Layer Pattern ✨ **NEW**
 ```typescript
-// Standard controller pattern with filtering
-export const getTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { type } = req.query;
-  const whereClause: any = { userId: req.userId };
-  
-  // Add type filter if provided (INCOME/EXPENSE)
-  if (type && (type === 'INCOME' || type === 'EXPENSE')) {
-    whereClause.type = type;
+// Controllers delegate to services
+export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const transactions = await prisma.transaction.findMany({
-    where: whereClause,
-    orderBy: { date: 'desc' }
-  });
-  res.json(transactions);
+  const { amount, currency, category, type, description, date, bankAccountId } = req.body;
+
+  const txn = await createTransactionService(
+    req.userId,
+    amount,
+    currency,
+    category,
+    date,
+    type,
+    description,
+    bankAccountId
+  );
+  res.status(201).json(txn);
 });
 ```
 
-### 2. Service Layer Pattern
+### 2. Service Implementation Pattern ✨ **NEW**
 ```typescript
-// Business logic separation
-export async function checkGoalConflicts(userId: string) {
-  // Complex business calculations
-  // Multiple database operations
-  // Return processed results
-}
+// Services handle business logic and database operations
+export const createTransaction = async (
+  userId: string,
+  amount: number,
+  currency: string,
+  category: Category,
+  date: string,
+  type?: TransactionType,
+  description?: string,
+  bankAccountId?: string
+) => {
+  try {
+    if (!amount || !currency || !category || !date) {
+      throw new Error('Amount, currency, category, and date are required');
+    }
+
+    const txn = await prisma.transaction.create({
+      data: {
+        userId,
+        amount,
+        currency,
+        category,
+        type: type || TransactionType.EXPENSE,
+        description,
+        date: new Date(date),
+        bankAccountId,
+      },
+    });
+
+    return txn;
+  } catch (err) {
+    console.error('Failed to create transaction:', err);
+    throw err;
+  }
+};
 ```
 
 ### 3. External API Integration Pattern
 ```typescript
-// Resilient external API calls
+// Resilient external API calls in services
 async function fetchCurrentPrice(ticker: string, assetType: string) {
   try {
     // API-specific logic
@@ -404,7 +567,6 @@ NODE_ENV=production
 ### Production Considerations
 - **Process Management**: PM2 or Docker containers
 - **Database Migrations**: Automated via Prisma
-- **Health Checks**: `/health` endpoint for monitoring
 - **Logging**: Structured logging for production debugging
 
 ## 🔄 Development Workflow
@@ -427,37 +589,31 @@ NODE_ENV=production
 - **Database Schema**: Prisma-managed migrations
 - **Seeding**: Automated test data creation
 
-This architecture provides a robust, scalable foundation for the Azerro personal finance platform with clear separation of concerns, comprehensive error handling, and efficient data processing patterns.
-
 ## 🆕 Recent Architecture Enhancements
 
-### Transaction Type System Integration
-- **Database Level**: Added TransactionType enum (INCOME/EXPENSE) with default values
-- **API Level**: Enhanced filtering capabilities with type-based queries
-- **Service Level**: Integrated transaction type logic in reporting services
-- **Controller Level**: Updated request handling with TypeScript enum support
+### Service Layer Implementation ✨ **MAJOR UPDATE**
+- **Complete Service Layer**: All controllers now use dedicated service functions
+- **Business Logic Separation**: Database operations moved from controllers to services
+- **Consistent Error Handling**: All services implement try-catch patterns with proper logging
+- **Type Safety**: Enhanced TypeScript types from Prisma throughout services
+- **Maintainability**: Clean separation of HTTP concerns from business logic
 
-### Date Utilities System Overhaul
-- **API Simplification**: Replaced inaccurate `monthsBetween` with calendar-aware implementation
-- **Accuracy Enhancement**: Fixed critical issues with leap years and varying month lengths
-- **Edge Case Handling**: Added support for overdue goals and short-term planning
-- **Utility Expansion**: Added `dateDifference()` and `formatDateDifference()` for comprehensive date analysis
+### Budget Management System ✨ **NEW**
+- **Budget Service**: `budget.service.ts` with createNewBudget function
+- **Budget Controller**: Complete CRUD operations for budget management
+- **Database Integration**: Full Prisma integration with Category and Periodicity enums
+- **API Endpoint**: POST /budgets for budget creation
 
-### Reports & Analytics Architecture
-- **Comprehensive Router**: `/reports` endpoint family (7 endpoints) with protected routes
-- **Service Layer**: `report.service.ts` with multi-faceted aggregation logic and pattern detection
-- **Controller Integration**: AsyncHandler pattern with error boundaries across all report types
-- **Database Optimization**: Efficient GROUP BY queries for category analysis, goal tracking, and portfolio insights
-- **Goal Progress Integration**: Advanced timeline analysis with progress percentages and completion tracking
-- **Recurring Pattern Detection**: Automatic transaction pattern recognition with frequency classification
-- **Multi-Currency Reporting**: Proper currency conversion handling across all report types
-- **Flexible Asset Grouping**: Dynamic portfolio analysis with configurable grouping parameters
-- **Generic Utility Integration**: Leverages reusable groupBy function for efficient data aggregation
+### Authorization Enhancement ✨ **UPDATED**
+- **Controller-Level Auth**: Every protected endpoint explicitly checks req.userId
+- **Consistent Status Codes**: Proper HTTP status codes (200, 201, 204, 401) across all endpoints
+- **Error Responses**: Standardized error message format
+- **Security**: Removed use of non-null assertion operator (!) in favor of explicit checks
 
-### Technical Standards Applied
-- **100% AsyncHandler Coverage**: All 24 controller functions use consistent error handling
-- **Date Calculation Accuracy**: Fixed critical issues with leap years and varying month lengths, simplified API
-- **Enhanced Goal Analytics**: Fixed critical calculation logic with consistent time handling and realistic planning
-- **TypeScript Enhancement**: Full integration with Prisma Client v4.16.2
-- **Migration Management**: Seamless database evolution with backward compatibility
-- **API Documentation**: Complete endpoint coverage with request/response examples 
+### Service Architecture Benefits
+- **Reusability**: Services can be easily reused across different parts of the application
+- **Testability**: Business logic can be unit tested independently
+- **Maintainability**: Changes to business logic don't affect HTTP handling
+- **Consistency**: Standardized error handling and validation patterns
+
+This architecture provides a robust, scalable foundation for the Azerro personal finance platform with clear separation of concerns, comprehensive error handling, efficient data processing patterns, and a modern service layer architecture. 

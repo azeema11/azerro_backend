@@ -1,109 +1,95 @@
 import { Request, Response } from 'express';
-import prisma from '../utils/db';
 import { AuthRequest } from '../middlewares/auth.middleware';
-import { checkGoalConflicts } from '../services/goal.service';
 import { asyncHandler } from '../utils/async_handler';
+import {
+    getGoals as getGoalsService,
+    createGoal as createGoalService,
+    updateGoal as updateGoalService,
+    deleteGoal as deleteGoalService,
+    getGoalById as getGoalByIdService,
+    contributeToGoal as contributeToGoalService,
+    checkGoalConflicts
+} from '../services/goal.service';
 
 export const getGoals = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const goals = await prisma.goal.findMany({
-        where: { userId: req.userId }
-    });
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
-    const goalsWithProgress = goals.map(goal => ({
-        ...goal,
-        progress: Math.min(100, (goal.savedAmount / goal.targetAmount) * 100)
-    }));
+    const goals = await getGoalsService(req.userId);
 
-    res.json(goalsWithProgress);
+    res.status(200).json(goals);
 });
 
 export const createGoal = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { name, description, targetAmount, savedAmount, targetDate } = req.body;
-
-    if (!name || !targetAmount || !targetDate) {
-        return res.status(400).json({ error: 'Name, target amount, and target date are required' });
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Get user's base currency
-    const user = await prisma.user.findUnique({
-        where: { id: req.userId },
-        select: { baseCurrency: true }
-    });
+    const { name, description, targetAmount, savedAmount, targetDate } = req.body;
 
-    const currency = user?.baseCurrency ?? 'INR';
+    const goal = await createGoalService(req.userId, name, targetAmount, targetDate, description, savedAmount);
 
-    const goal = await prisma.goal.create({
-        data: {
-            userId: req.userId!,
-            name,
-            description,
-            targetAmount,
-            savedAmount,
-            currency,
-            targetDate: new Date(targetDate)
-        }
-    });
     res.status(201).json(goal);
 });
 
 export const updateGoal = asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { id } = req.params;
     const data = req.body;
 
-    const updated = await prisma.goal.update({
-        where: { id },
-        data: {
-            ...data,
-        }
-    });
-    res.json(updated);
+    const updated = await updateGoalService(id, data);
+
+    res.status(200).json(updated);
 });
 
 export const deleteGoal = asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { id } = req.params;
-    await prisma.goal.delete({ where: { id } });
+
+    await deleteGoalService(id);
+
     res.status(204).send();
 });
 
 export const getGoalById = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const goal = await prisma.goal.findFirst({
-        where: {
-            id: req.params.id,
-            userId: req.userId
-        }
-    });
-
-    if (!goal) {
-        return res.status(404).json({ error: 'Goal not found' });
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const progress = Math.min(100, (goal.savedAmount / goal.targetAmount) * 100);
-    res.json({ ...goal, progress });
+    const { id } = req.params;
+
+    const goal = await getGoalByIdService(id, req.userId);
+
+    res.status(200).json(goal);
 });
 
 export const contributeToGoal = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { id } = req.params;
-    const { amount } = req.body;
-
-    if (!amount || amount <= 0) {
-        return res.status(400).json({ error: 'Valid contribution amount is required' });
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const goal = await prisma.goal.update({
-        where: { id },
-        data: {
-            savedAmount: {
-                increment: amount
-            }
-        }
-    });
+    const { id } = req.params;
 
-    const progress = Math.min(100, (goal.savedAmount / goal.targetAmount) * 100);
-    res.json({ ...goal, progress });
+    const { amount } = req.body;
+
+    const goal = await contributeToGoalService(id, amount);
+
+    res.status(200).json(goal);
 });
 
 export const getGoalConflicts = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.userId!;
-    const result = await checkGoalConflicts(userId);
-    res.json(result);
+    if (!req.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const result = await checkGoalConflicts(req.userId);
+
+    res.status(200).json(result);
 });

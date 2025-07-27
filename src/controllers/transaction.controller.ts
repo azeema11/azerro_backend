@@ -1,60 +1,63 @@
 import { Request, Response } from 'express';
-import prisma from '../utils/db';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { asyncHandler } from '../utils/async_handler';
 import { TransactionType } from '@prisma/client';
+import {
+  getTransactions as getTransactionsService,
+  createTransaction as createTransactionService,
+  updateTransaction as updateTransactionService,
+  deleteTransaction as deleteTransactionService
+} from '../services/transaction.service';
 
 export const getTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { type } = req.query;
-
-  const whereClause: any = { userId: req.userId };
-
-  if (type && (type === TransactionType.INCOME || type === TransactionType.EXPENSE)) {
-    whereClause.type = type;
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const transactions = await prisma.transaction.findMany({
-    where: whereClause,
-    orderBy: { date: 'desc' },
-  });
-  res.json(transactions);
+  const { type } = req.query;
+
+  const transactions = await getTransactionsService(req.userId, type as TransactionType);
+  res.status(200).json(transactions);
 });
 
 export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { amount, currency, category, type, description, date, bankAccountId } = req.body;
-
-  if (!amount || !currency || !category || !date) {
-    return res.status(400).json({ error: 'Amount, currency, category, and date are required' });
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const txn = await prisma.transaction.create({
-    data: {
-      userId: req.userId!,
-      amount,
-      currency,
-      category,
-      type: type || TransactionType.EXPENSE, // Default to EXPENSE if not provided
-      description,
-      date: new Date(date),
-      bankAccountId,
-    },
-  });
+  const { amount, currency, category, type, description, date, bankAccountId } = req.body;
+
+  const txn = await createTransactionService(
+    req.userId,
+    amount,
+    currency,
+    category,
+    date,
+    type,
+    description,
+    bankAccountId
+  );
   res.status(201).json(txn);
 });
 
 export const updateTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const { id } = req.params;
   const data = req.body;
 
-  const updated = await prisma.transaction.update({
-    where: { id },
-    data,
-  });
-  res.json(updated);
+  const updated = await updateTransactionService(id, data);
+  res.status(200).json(updated);
 });
 
 export const deleteTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const { id } = req.params;
-  await prisma.transaction.delete({ where: { id } });
+  await deleteTransactionService(id);
   res.status(204).send();
 });

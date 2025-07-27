@@ -14,6 +14,7 @@ import { scheduleCurrencyRateRefresh } from './jobs/refresh_currency_rates.job';
 import { ensureCurrencyRatesExist } from './services/currency_rates.service';
 import { scheduleHoldingRefresh } from './jobs/refresh_holdings.job';
 import reportsRouter from './routes/report.routes';
+import budgetRouter from './routes/budget.route';
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/holdings', authMiddleware, holdingRouter);
 app.use('/settings', authMiddleware, settingsRouter);
 app.use('/goals', authMiddleware, goalRouter);
 app.use("/reports", authMiddleware, reportsRouter);
+app.use("/budgets", authMiddleware, budgetRouter);
 
 app.use('*', (req: Request, res: Response) => {
     res.status(404).json({ error: `Route ${req.originalUrl} not found` });

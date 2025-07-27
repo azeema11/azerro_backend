@@ -12,7 +12,7 @@ export const expenseSummary = asyncHandler(async (req: AuthRequest, res: Respons
     }
 
     const result = await getExpenseSummary(userId, start as string, end as string);
-    res.json(result);
+    res.status(200).json(result);
 });
 
 export const monthlyIncomeVsExpense = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -23,7 +23,7 @@ export const monthlyIncomeVsExpense = asyncHandler(async (req: AuthRequest, res:
     }
 
     const report = await getMonthlyIncomeVsExpense(userId);
-    res.json(report);
+    res.status(200).json(report);
 });
 
 export const categoryBreakdown = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -35,7 +35,7 @@ export const categoryBreakdown = asyncHandler(async (req: AuthRequest, res: Resp
     }
 
     const report = await getCategoryBreakdown(userId, startDate as string, endDate as string);
-    res.json(report);
+    res.status(200).json(report);
 });
 
 export const assetAllocation = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -47,7 +47,7 @@ export const assetAllocation = asyncHandler(async (req: AuthRequest, res: Respon
     }
 
     const report = await getAssetAllocation(userId, groupBy as 'assetType' | 'platform' | 'ticker' || 'assetType');
-    res.json(report);
+    res.status(200).json(report);
 });
 
 export const budgetVsActual = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -59,7 +59,7 @@ export const budgetVsActual = asyncHandler(async (req: AuthRequest, res: Respons
     }
 
     const report = await getBudgetVsActual(userId, period as 'MONTHLY' | 'WEEKLY' | 'ANNUAL' || 'MONTHLY');
-    res.json(report);
+    res.status(200).json(report);
 });
 
 export const goalProgress = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -70,7 +70,7 @@ export const goalProgress = asyncHandler(async (req: AuthRequest, res: Response)
     }
 
     const report = await getGoalProgressReport(userId);
-    res.json(report);
+    res.status(200).json(report);
 });
 
 export const recurringTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -81,5 +81,5 @@ export const recurringTransactions = asyncHandler(async (req: AuthRequest, res: 
     }
 
     const report = await detectRecurringTransactions(userId);
-    res.json(report);
+    res.status(200).json(report);
 });
