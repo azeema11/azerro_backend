@@ -225,6 +225,7 @@ The application now implements a comprehensive service layer pattern that separa
 - ✅ **`budget.service.ts`** - Budget management operations ✨ **NEW**
 - ✅ **`goal.service.ts`** - Financial goals management
 - ✅ **`holding.service.ts`** - Investment holdings with price fetching
+- ✅ **`planned_event.service.ts`** - Planned events and future expense management ✨ **NEW**
 - ✅ **`transaction.service.ts`** - Transaction management
 - ✅ **`user.service.ts`** - User profile and preferences
 - ✅ **`report.service.ts`** - Analytics and reporting
@@ -314,6 +315,16 @@ PUT    /goals/:id       - Update goal
 DELETE /goals/:id       - Delete goal
 ```
 
+### Planned Events (6 endpoints) ✨ **NEW**
+```
+GET    /planned-events           - List planned events
+POST   /planned-events           - Create planned event
+PUT    /planned-events/:id       - Update planned event
+DELETE /planned-events/:id       - Delete planned event
+PUT    /planned-events/complete/:id - Mark event as complete (creates transaction)
+PUT    /planned-events/reset/:id - Undo completion (removes transaction)
+```
+
 ### Budget Management (5 endpoints) ✨ **UPDATED**
 ```
 POST /budgets                 - Create budget
@@ -339,7 +350,7 @@ GET /reports/goal-progress         - Financial goals progress tracking
 GET /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
 ```
 
-**Total: 35 API endpoints** covering all core personal finance functionality ✨ **UPDATED**
+**Total: 41 API endpoints** covering all core personal finance functionality ✨ **UPDATED**
 
 ### Recent Enhancements (Latest Updates)
 
@@ -367,13 +378,32 @@ GET /reports/recurring-transactions - Detect recurring transaction patterns with
 - ✅ **Parameter Validation**: Enhanced validation in all service functions
 - ✅ **Testing**: All endpoints tested and verified working correctly
 
-## 🎯 Features NOT Yet Implemented
+### 📅 Planned Events System ✅ **COMPLETE** ✨ **NEW MAJOR FEATURE**
+**Implementation**: Complete planned events management system with service layer and API endpoints
 
-### 📅 Planned Events System 🔄 **PLANNED**  
-**Database Ready**: PlannedEvent schema exists but controllers/routes not implemented
-- Future expense planning (trips, purchases, etc.)
-- Savings targets for planned events
-- Event timeline management
+**What's Working**:
+- ✅ **Event Creation**: Plan future expenses with target dates and estimated costs *(using PlannedEventService)*
+- ✅ **Event Listing**: View all planned events with sorting *(using PlannedEventService)*
+- ✅ **Event Updates**: Modify existing planned events *(using PlannedEventService)*
+- ✅ **Event Deletion**: Remove planned events *(using PlannedEventService)*
+- ✅ **Event Completion**: Convert planned events to actual transactions *(using PlannedEventService)*
+- ✅ **Completion Undo**: Reverse completion and remove associated transactions *(using PlannedEventService)*
+- ✅ **User Base Currency**: Defaults to user's base currency instead of hardcoded INR
+- ✅ **Category Integration**: Uses transaction categories for expense tracking
+- ✅ **Recurrence Support**: Support for one-time and recurring events
+- ✅ **Multi-Currency Support**: Support for events in different currencies
+
+**Advanced Features**:
+- **Smart Currency Defaults**: Automatically uses user's preferred base currency
+- **Transaction Integration**: Seamless conversion from planned events to actual expense transactions
+- **Bidirectional Completion**: Complete events and undo completion with full transaction management
+- **Category Consistency**: Uses same categories as transactions for unified expense tracking
+- **User Isolation**: All events are properly filtered by userId for security
+- **Complete CRUD**: Full lifecycle management of planned events
+
+**Service Integration**: Complete business logic separation in `planned_event.service.ts`
+
+## 🎯 Features NOT Yet Implemented
 
 ### 🤖 Assistant System 🔄 **PLANNED**
 **Database Ready**: Assistant and UserAssistant schemas exist but not utilized
@@ -427,7 +457,7 @@ GET /reports/recurring-transactions - Detect recurring transaction patterns with
 | Background Jobs | ✅ Complete | 100% | Automated data updates |
 | Reports & Analytics | ✅ Complete | 100% | 7 comprehensive reports |
 | Service Layer | ✅ Complete | 100% | Full implementation across all modules ✨ **NEW** |
-| Planned Events | 🔄 Planned | 0% | Database schema ready |
+| Planned Events | ✅ Complete | 100% | Full implementation with service layer and API endpoints |
 | Assistant System | 🔄 Planned | 0% | Database schema ready |
 
 ## 🚀 Deployment Readiness

@@ -88,7 +88,15 @@ export const createGoal = asyncHandler(async (req: AuthRequest, res: Response) =
 - ✅ `contributeToGoal` - Add money towards goal
 - ✅ `getGoalConflicts` - Analyze goal feasibility
 
-### 7. Reports Controller (`src/controllers/report.controller.ts`)
+### 7. Planned Events Controller (`src/controllers/planned_event.controller.ts`) ✨ **NEW**
+- ✅ `addPlannedEvent` - Create new planned event with user base currency defaults
+- ✅ `getPlannedEvents` - List user's planned events
+- ✅ `editPlannedEvent` - Update planned event details
+- ✅ `removePlannedEvent` - Delete planned event
+- ✅ `setPlannedEventComplete` - Mark event as complete and create transaction
+- ✅ `resetPlannedEventComplete` - Undo completion and remove transaction
+
+### 8. Reports Controller (`src/controllers/report.controller.ts`)
 - ✅ `expenseSummary` - Generate expense summary reports with date filtering
 - ✅ `monthlyIncomeVsExpense` - Monthly income vs expense comparison analysis
 - ✅ `categoryBreakdown` - Category-wise spending breakdown reporting
@@ -141,7 +149,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 Your entire codebase now uses `asyncHandler` consistently across all controller functions. This provides:
 
-- **30 Controller Functions** properly wrapped with asyncHandler (including comprehensive Reports controller)
+- **36 Controller Functions** properly wrapped with asyncHandler (including comprehensive Reports and Planned Events controllers)
 - **Consistent Error Handling** across all API endpoints
 - **Production-Ready** error responses
 - **Clean, Maintainable Code** structure
@@ -149,11 +157,21 @@ Your entire codebase now uses `asyncHandler` consistently across all controller 
 
 ## 🆕 Recent Updates
 
-### Reports Controller Integration
+### Recent Controller Integrations
+
+#### Reports Controller Integration
 - ✅ **Comprehensive Controller**: `report.controller.ts` with 7 report endpoints using asyncHandler
 - ✅ **Multi-Faceted Reporting**: Expense summary, income/expense analysis, category breakdown, asset allocation, budget comparison, goal progress, and recurring pattern detection
 - ✅ **Recurring Transaction Detection**: New endpoint for automatic transaction pattern recognition with frequency analysis
 - ✅ **Consistent Pattern**: All report endpoints follow same asyncHandler structure
 - ✅ **Error Handling**: Complete integration with global error handling system across all report types
+
+#### Planned Events Controller Integration ✨ **NEW**
+- ✅ **Complete Controller**: `planned_event.controller.ts` with 6 planned event endpoints using asyncHandler
+- ✅ **Full CRUD Operations**: Create, read, update, delete planned events with proper HTTP status codes
+- ✅ **Advanced Features**: Event completion workflow that creates transactions and undo completion functionality
+- ✅ **Currency Integration**: Automatic user base currency defaults and multi-currency support
+- ✅ **Authorization**: Comprehensive userId validation across all endpoints
+- ✅ **Error Handling**: Full integration with global error handling system
 
 The implementation is complete and follows Node.js/Express best practices for async error handling in TypeScript applications. 

@@ -1,4 +1,4 @@
-import { monthsBetween } from "../utils/date";
+import { monthsBetween, recurrenceToMonthlyFactor } from "../utils/date";
 import prisma from "../utils/db";
 
 export const getGoals = async (userId: string) => {
@@ -131,7 +131,12 @@ export const contributeToGoal = async (id: string, amount: number) => {
 export async function checkGoalConflicts(userId: string) {
     try {
         const user = await prisma.user.findUnique({ where: { id: userId } });
+
         const goals = await prisma.goal.findMany({
+            where: { userId, completed: false }
+        });
+
+        const events = await prisma.plannedEvent.findMany({
             where: { userId, completed: false }
         });
 
@@ -139,13 +144,45 @@ export async function checkGoalConflicts(userId: string) {
         let totalRequired = 0;
         const detailed = [];
 
+        // --- Goals ---
         for (const g of goals) {
             const monthsLeft = monthsBetween(now, g.targetDate);
             const amountLeft = g.targetAmount - g.savedAmount;
             const perMonth = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
             totalRequired += perMonth;
 
-            detailed.push({ goalId: g.id, name: g.name, perMonth, monthsLeft });
+            detailed.push({
+                type: "GOAL",
+                id: g.id,
+                name: g.name,
+                perMonth,
+                monthsLeft
+            });
+        }
+
+        // --- Planned Events ---
+        for (const e of events) {
+            let perMonth = 0;
+
+            if (e.recurrence === "ONE_TIME") {
+                const monthsLeft = monthsBetween(now, e.targetDate);
+                const amountLeft = e.estimatedCost - e.savedSoFar;
+                perMonth = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
+            } else {
+                // Recurring → convert to monthly equivalent
+                const factor = recurrenceToMonthlyFactor(e.recurrence);
+                perMonth = e.estimatedCost * factor;
+            }
+
+            totalRequired += perMonth;
+
+            detailed.push({
+                type: "PLANNED_EVENT",
+                id: e.id,
+                name: e.name,
+                perMonth,
+                recurrence: e.recurrence
+            });
         }
 
         const conflict = totalRequired > (user?.monthlyIncome ?? 0);

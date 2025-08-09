@@ -109,6 +109,8 @@ export function formatDateDifference(from: Date, to: Date): string {
 }
 
 const frequencyThresholds: Record<Periodicity, number> = {
+    ONE_TIME: 0,
+    DAILY: 1,
     WEEKLY: 7,
     MONTHLY: 31,
     QUARTERLY: 93,
@@ -126,6 +128,7 @@ export function detectFrequency(dates: Date[]): Periodicity | null {
     }
     const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
 
+    if (avgGap <= frequencyThresholds.DAILY) return "DAILY";
     if (avgGap <= frequencyThresholds.WEEKLY) return "WEEKLY";
     if (avgGap <= frequencyThresholds.MONTHLY) return "MONTHLY";
     if (avgGap <= frequencyThresholds.QUARTERLY) return "QUARTERLY";
@@ -146,6 +149,13 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
     let end: Date;
 
     switch (period) {
+        case 'ONE_TIME':
+        case 'DAILY':
+            start = new Date(now);
+            start.setHours(0, 0, 0, 0);
+            end = new Date(now);
+            end.setHours(23, 59, 59, 999);
+            break;
         case 'WEEKLY':
             // Start of current week (Monday)
             start = new Date(now);
@@ -200,7 +210,6 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
             end = new Date(now);
             end.setHours(23, 59, 59, 999);
             break;
-
         default:
             throw new Error(`Invalid period: ${period}`);
     }
@@ -209,4 +218,16 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
         start,
         end,
     };
+}
+
+export function recurrenceToMonthlyFactor(recurrence: string) {
+    switch (recurrence) {
+        case "DAILY": return 30;
+        case "WEEKLY": return 4.33;
+        case "MONTHLY": return 1;
+        case "QUARTERLY": return 1 / 3;
+        case "HALF_YEARLY": return 1 / 6;
+        case "YEARLY": return 1 / 12;
+        default: return 0; // ONE_TIME handled separately
+    }
 }

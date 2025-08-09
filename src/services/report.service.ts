@@ -144,52 +144,57 @@ export async function getAssetAllocation(userId: string, groupBy: 'assetType' | 
     };
 }
 
-export async function getBudgetVsActual(userId: string, period: 'MONTHLY' | 'WEEKLY' | 'ANNUAL' = 'MONTHLY', date = new Date()) {
+export async function getBudgetVsActual(userId: string, period: 'MONTHLY' | 'WEEKLY' | 'YEARLY' = 'MONTHLY', date = new Date()) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
-    // For now only supporting MONTHLY
     const periodStart = new Date(date.getFullYear(), date.getMonth(), 1);
     const periodEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    const [budgets, transactions] = await Promise.all([
-        prisma.budget.findMany({
-            where: {
-                userId,
-                period,
-            },
+    const [budgets, transactions, plannedEvents] = await Promise.all([
+        prisma.budget.findMany({ 
+            where: { 
+                userId, 
+                period 
+            }, 
         }),
         prisma.transaction.findMany({
-            where: {
-                userId,
-                date: {
-                    gte: periodStart,
-                    lte: periodEnd,
-                },
+            where: { 
+                userId, 
+                date: { 
+                    gte: periodStart, 
+                    lte: periodEnd 
+                }, 
             },
+        }),
+        prisma.plannedEvent.findMany({
+            where: { userId, targetDate: { gte: periodStart, lte: periodEnd }, completed: false },
         }),
     ]);
 
     const actualsMap = new Map<string, number>();
 
+    const addAmount = async (category: string, amount: number, currency: string) => {
+        const converted = await convertCurrencyFromDB(amount, currency, user.baseCurrency);
+        actualsMap.set(category, (actualsMap.get(category) || 0) + converted);
+    };
+
     for (const txn of transactions) {
-        const converted = await convertCurrencyFromDB(txn.amount, txn.currency, user.baseCurrency);
-        const current = actualsMap.get(txn.category) || 0;
-        actualsMap.set(txn.category, current + converted);
+        await addAmount(txn.category, txn.amount, txn.currency);
+    }
+    for (const pe of plannedEvents) {
+        await addAmount(pe.category, pe.estimatedCost, pe.currency);
     }
 
-    const result = budgets.map(budget => {
-        const actual = actualsMap.get(budget.category) || 0;
-        return {
-            category: budget.category,
-            budgeted: parseFloat(budget.amount.toFixed(2)),
-            spent: parseFloat(actual.toFixed(2)),
-        };
-    });
+    const result = budgets.map(budget => ({
+        category: budget.category,
+        budgeted: parseFloat(budget.amount.toFixed(2)),
+        spent: parseFloat((actualsMap.get(budget.category) || 0).toFixed(2)),
+    }));
 
-    return {
-        currency: user.baseCurrency,
-        period,
+    return { 
+        currency: user.baseCurrency, 
+        period, 
         result,
     };
 }
@@ -221,8 +226,6 @@ export async function getGoalProgressReport(userId: string) {
         };
     });
 }
-
-
 
 export async function detectRecurringTransactions(userId: string) {
     const txns = await prisma.transaction.findMany({

@@ -58,7 +58,7 @@ export const budgetVsActual = asyncHandler(async (req: AuthRequest, res: Respons
         return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const report = await getBudgetVsActual(userId, period as 'MONTHLY' | 'WEEKLY' | 'ANNUAL' || 'MONTHLY');
+    const report = await getBudgetVsActual(userId, period as 'MONTHLY' | 'WEEKLY' | 'YEARLY' || 'MONTHLY');
     res.status(200).json(report);
 });
 

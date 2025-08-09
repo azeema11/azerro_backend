@@ -96,14 +96,19 @@ model BankAccount {
 }
 
 model PlannedEvent {
-  id            String   @id @default(uuid())
-  user          User     @relation(fields: [userId], references: [id])
+  id            String       @id @default(uuid())
+  user          User         @relation(fields: [userId], references: [id])
   userId        String
-  name          String // e.g. "Goa Trip"
+  name          String
   targetDate    DateTime
   estimatedCost Float
-  savedSoFar    Float    @default(0)
-  createdAt     DateTime @default(now())
+  savedSoFar    Float        @default(0)
+  currency      String       // e.g., INR, USD
+  category      Category
+  recurrence    Periodicity  @default(ONE_TIME)
+  createdAt     DateTime     @default(now())
+  completed     Boolean      @default(false)
+  completedTxId String?      // link to generated transaction if completed
 }
 
 model Budget {
@@ -146,11 +151,13 @@ enum AccountType {
 }
 
 enum Periodicity {
+  DAILY
   WEEKLY
   MONTHLY
   QUARTERLY
   HALF_YEARLY
   YEARLY
+  ONE_TIME
 }
 
 model CurrencyRate {

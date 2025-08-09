@@ -113,6 +113,9 @@ CurrencyRate (standalone)
 | targetDate | DateTime | NOT NULL | Target date for the event |
 | estimatedCost | Float | NOT NULL | Estimated total cost |
 | savedSoFar | Float | DEFAULT: 0 | Amount saved towards the event |
+| currency | String | NOT NULL | Event currency (defaults to user's base currency) ✨ **ENHANCED**
+| category | Category | DEFAULT: OTHER | Event category for expense tracking ✨ **ENHANCED**
+| recurrence | Periodicity | DEFAULT: ONE_TIME | Recurring event frequency ✨ **ENHANCED**
 | createdAt | DateTime | DEFAULT: now() | Creation timestamp |
 
 ### 8. Budget
@@ -124,7 +127,7 @@ CurrencyRate (standalone)
 | userId | UUID | FOREIGN KEY | Reference to User |
 | category | Category | NOT NULL | Budget category (enum) |
 | amount | Float | NOT NULL | Budget amount for the period |
-| period | Periodicity | NOT NULL | Budget period (WEEKLY, MONTHLY, ANNUAL) |
+| period | Periodicity | NOT NULL | Budget period (WEEKLY, MONTHLY, YEARLY) |
 | createdAt | DateTime | DEFAULT: now() | Creation timestamp |
 
 ### 9. Goal
@@ -185,9 +188,13 @@ Types of financial accounts:
 
 ### Periodicity
 Budget and recurring periods:
+- `DAILY` - Daily period
 - `WEEKLY` - Weekly period
 - `MONTHLY` - Monthly period
-- `ANNUAL` - Annual period
+- `QUARTERLY` - Quarterly period
+- `HALF_YEARLY` - Half-yearly period
+- `YEARLY` - Yearly period
+- `ONE_TIME` - One-time event (for planned events)
 
 ### TransactionType
 Types of financial transactions:

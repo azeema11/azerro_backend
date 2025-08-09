@@ -180,6 +180,7 @@ export const createTransaction = async (
 - **`budget.service.ts`** - Budget management operations
 - **`goal.service.ts`** - Financial goals management
 - **`holding.service.ts`** - Investment holdings with price fetching
+- **`planned_event.service.ts`** - Planned events and future expense management ✨ **NEW**
 - **`transaction.service.ts`** - Transaction management
 - **`user.service.ts`** - User profile and preferences
 - **`report.service.ts`** - Analytics and reporting
@@ -333,6 +334,13 @@ POST /goals/:id/contribute      - Add money to goal
 PUT  /goals/:id                 - Update goal
 DELETE /goals/:id               - Delete goal
 
+GET  /planned-events            - List planned events
+POST /planned-events            - Create planned event
+PUT  /planned-events/:id        - Update planned event
+DELETE /planned-events/:id      - Delete planned event
+PUT  /planned-events/complete/:id - Mark event as complete (creates transaction)
+PUT  /planned-events/reset/:id  - Undo completion (removes transaction)
+
 ### Budget Management Routes (`/budgets`) ✨ **NEW**
 ```
 POST /budgets                    - Create budget
@@ -393,7 +401,32 @@ graph TD
 3. **Asset Types**: Stocks (Finnhub), Crypto (CoinGecko), Metals (metals.live)
 4. **Currency Conversion**: Automatic conversion to user's base currency
 
-### 3. Budget Management Flow ✨ **NEW**
+### 3. Planned Events Management Flow ✨ **NEW**
+```mermaid
+graph TD
+    A[Create Planned Event] --> B[Planned Event Service]
+    B --> C[Fetch User Base Currency]
+    C --> D[Store Event with Defaults]
+    D --> E[Event Completion Flow]
+    E --> F[Create Associated Transaction]
+    F --> G[Mark Event as Completed]
+    G --> H[Link Transaction to Event]
+    
+    I[Undo Completion] --> J[Find Completed Event]
+    J --> K[Delete Associated Transaction]
+    K --> L[Reset Event Status]
+```
+
+**Planned Events Features**:
+1. **Event Creation**: Plan future expenses with target dates and estimated costs
+2. **Currency Support**: Automatic default to user's base currency
+3. **Category Integration**: Uses transaction categories for expense tracking
+4. **Recurrence Support**: One-time or recurring events
+5. **Completion Workflow**: Converts planned events to actual transactions
+6. **Undo Capability**: Reverse completion and remove associated transactions
+7. **User Isolation**: All events filtered by userId for security
+
+### 4. Budget Management Flow ✨ **NEW**
 ```mermaid
 graph TD
     A[Create Budget] --> B[Budget Service]

@@ -100,22 +100,29 @@ export const getUserBudgetPerformance = async (userId: string) => {
 
                 const dateRange = getPeriodDates(period);
 
-                const transactions = await prisma.transaction.findMany({
-                    where: {
-                        userId,
-                        category,
-                        date: {
-                            gte: dateRange.start,
-                            lte: dateRange.end,
+                const [transactions, plannedEvents] = await Promise.all([
+                    prisma.transaction.findMany({
+                        where: {
+                            userId,
+                            category,
+                            date: { gte: dateRange.start, lte: dateRange.end },
                         },
-                    },
-                });
+                    }),
+                    prisma.plannedEvent.findMany({
+                        where: {
+                            userId,
+                            category,
+                            targetDate: { gte: dateRange.start, lte: dateRange.end },
+                            completed: false,
+                        },
+                    }),
+                ]);
 
                 const totalSpent = await getTotalConverted(
-                    transactions.map(transaction => ({
-                        amount: transaction.amount,
-                        currency: transaction.currency,
-                    })),
+                    [
+                        ...transactions.map(t => ({ amount: t.amount, currency: t.currency })),
+                        ...plannedEvents.map(pe => ({ amount: pe.estimatedCost, currency: pe.currency })),
+                    ],
                     user.baseCurrency
                 );
 
