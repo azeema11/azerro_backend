@@ -149,14 +149,14 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
     let end: Date;
 
     switch (period) {
-        case 'ONE_TIME':
-        case 'DAILY':
+        case Periodicity.ONE_TIME:
+        case Periodicity.DAILY:
             start = new Date(now);
             start.setHours(0, 0, 0, 0);
             end = new Date(now);
             end.setHours(23, 59, 59, 999);
             break;
-        case 'WEEKLY':
+        case Periodicity.WEEKLY:
             // Start of current week (Monday)
             start = new Date(now);
             const dayOfWeek = start.getDay();
@@ -169,7 +169,7 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
             end.setHours(23, 59, 59, 999);
             break;
 
-        case 'MONTHLY':
+        case Periodicity.MONTHLY:
             // Start of current month
             start = new Date(now.getFullYear(), now.getMonth(), 1);
             start.setHours(0, 0, 0, 0);
@@ -179,7 +179,7 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
             end.setHours(23, 59, 59, 999);
             break;
 
-        case 'QUARTERLY':
+        case Periodicity.QUARTERLY:
             // Start of current quarter
             const currentQuarter = Math.floor(now.getMonth() / 3);
             start = new Date(now.getFullYear(), currentQuarter * 3, 1);
@@ -190,7 +190,7 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
             end.setHours(23, 59, 59, 999);
             break;
 
-        case 'HALF_YEARLY':
+        case Periodicity.HALF_YEARLY:
             // Start of current half year (Jan 1 or Jul 1)
             const halfYear = now.getMonth() < 6 ? 0 : 6;
             start = new Date(now.getFullYear(), halfYear, 1);
@@ -201,7 +201,7 @@ export function getPeriodDates(period: Periodicity, referenceDate: Date = new Da
             end.setHours(23, 59, 59, 999);
             break;
 
-        case 'YEARLY':
+        case Periodicity.YEARLY:
             // Start of current year
             start = new Date(now.getFullYear(), 0, 1);
             start.setHours(0, 0, 0, 0);

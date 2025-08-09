@@ -65,6 +65,12 @@ model Holding {
   lastChecked     DateTime @updatedAt
 
   convertedValue Float @default(0) // Calculated value in baseCurrency
+
+  @@unique([id, userId])
+  @@index([userId])
+  @@index([userId, assetType])
+  @@index([ticker])
+  @@index([platform])
 }
 
 model Transaction {
@@ -80,6 +86,15 @@ model Transaction {
 
   bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
   bankAccountId String?
+
+  // Reverse relation for PlannedEvent.completedTxId
+  completedPlannedEvent PlannedEvent?
+
+  @@unique([id, userId])
+  @@index([userId, type])
+  @@index([userId, date])
+  @@index([userId, category])
+  @@index([date])
 }
 
 model BankAccount {
@@ -93,22 +108,35 @@ model BankAccount {
   createdAt DateTime    @default(now())
 
   transactions Transaction[]
+
+  @@unique([id, userId])
+  @@index([userId])
+  @@index([userId, type])
 }
 
 model PlannedEvent {
-  id            String       @id @default(uuid())
-  user          User         @relation(fields: [userId], references: [id])
+  id            String      @id @default(uuid())
+  user          User        @relation(fields: [userId], references: [id])
   userId        String
   name          String
   targetDate    DateTime
   estimatedCost Float
-  savedSoFar    Float        @default(0)
-  currency      String       // e.g., INR, USD
+  savedSoFar    Float       @default(0)
+  currency      String // e.g., INR, USD
   category      Category
-  recurrence    Periodicity  @default(ONE_TIME)
-  createdAt     DateTime     @default(now())
-  completed     Boolean      @default(false)
-  completedTxId String?      // link to generated transaction if completed
+  recurrence    Periodicity @default(ONE_TIME)
+  createdAt     DateTime    @default(now())
+  completed     Boolean     @default(false)
+
+  // Foreign key relation to Transaction
+  completedTx   Transaction? @relation(fields: [completedTxId], references: [id])
+  completedTxId String?      @unique // link to generated transaction if completed
+
+  @@unique([id, userId])
+  @@index([userId, completed])
+  @@index([userId, targetDate])
+  @@index([userId, category])
+  @@index([targetDate])
 }
 
 model Budget {
@@ -119,6 +147,11 @@ model Budget {
   amount    Float // budget amount per period
   period    Periodicity // WEEKLY, MONTHLY, ANNUAL
   createdAt DateTime    @default(now())
+
+  @@unique([id, userId])
+  @@index([userId])
+  @@index([userId, category])
+  @@index([userId, period])
 }
 
 enum Category {
@@ -184,4 +217,10 @@ model Goal {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   completed    Boolean  @default(false)
+
+  @@unique([id, userId])
+  @@index([userId])
+  @@index([userId, completed])
+  @@index([userId, targetDate])
+  @@index([targetDate])
 }

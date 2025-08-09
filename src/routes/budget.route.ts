@@ -3,10 +3,10 @@ import { createBudget, deleteBudget, getBudgetPerformance, getBudgets, updateBud
 
 const router = Router();
 
-router.post('/', createBudget);
 router.get('/', getBudgets);
+router.get('/performance', getBudgetPerformance);
+router.post('/', createBudget);
 router.put('/:id', updateBudget);
 router.delete('/:id', deleteBudget);
-router.get('/performance', getBudgetPerformance);
 
 export default router;

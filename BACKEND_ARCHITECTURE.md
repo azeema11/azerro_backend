@@ -70,6 +70,7 @@ src/
 ├── services/            # Business logic and database operations
 ├── routes/              # API endpoint definitions
 ├── middlewares/         # Request processing middleware
+├── types/               # TypeScript interfaces and type definitions
 ├── utils/               # Utility functions and helpers (async_handler, currency, date, utils, etc.)
 ├── jobs/                # Background job definitions
 └── scripts/             # Database seeding and maintenance
@@ -522,18 +523,18 @@ graph TD
 
 ## 🔄 Data Flow Patterns
 
-### 1. Service Layer Pattern ✨ **NEW**
+### 1. Service Layer Pattern ✨ **ENHANCED**
 ```typescript
-// Controllers delegate to services
+// Controllers delegate to services with typed input objects
 export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Create typed input object from request body
   const { amount, currency, category, type, description, date, bankAccountId } = req.body;
 
-  const txn = await createTransactionService(
-    req.userId,
+  const transactionInput: CreateTransactionInput = {
     amount,
     currency,
     category,
@@ -541,47 +542,58 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
     type,
     description,
     bankAccountId
-  );
+  };
+
+  const txn = await createTransactionService(req.userId, transactionInput);
   res.status(201).json(txn);
 });
 ```
 
-### 2. Service Implementation Pattern ✨ **NEW**
+### 2. Service Implementation Pattern ✨ **ENHANCED**
 ```typescript
-// Services handle business logic and database operations
+// Services handle business logic with typed inputs and structured error handling
 export const createTransaction = async (
   userId: string,
-  amount: number,
-  currency: string,
-  category: Category,
-  date: string,
-  type?: TransactionType,
-  description?: string,
-  bankAccountId?: string
+  data: CreateTransactionInput
 ) => {
-  try {
-    if (!amount || !currency || !category || !date) {
-      throw new Error('Amount, currency, category, and date are required');
-    }
+  // Business logic validation
+  if (!data.amount || data.amount === 0) {
+    throw new ValidationError(
+      'Transaction amount is required and cannot be zero',
+      'Transaction',
+      undefined,
+      { field: 'amount', validationType: 'business' }
+    );
+  }
 
-    const txn = await prisma.transaction.create({
+  if (!data.currency?.trim()) {
+    throw new ValidationError(
+      'Currency is required',
+      'Transaction',
+      undefined,
+      { field: 'currency', validationType: 'business' }
+    );
+  }
+
+  return withPrismaErrorHandling(async () => {
+    return await prisma.transaction.create({
       data: {
         userId,
-        amount,
-        currency,
-        category,
-        type: type || TransactionType.EXPENSE,
-        description,
-        date: new Date(date),
-        bankAccountId,
+        amount: data.amount,
+        currency: data.currency,
+        category: data.category,
+        type: data.type || TransactionType.EXPENSE,
+        description: data.description,
+        date: data.date ? new Date(data.date) : new Date(),
+        bankAccountId: data.bankAccountId,
       },
+      include: {
+        bankAccount: {
+          select: { name: true }
+        }
+      }
     });
-
-    return txn;
-  } catch (err) {
-    console.error('Failed to create transaction:', err);
-    throw err;
-  }
+  }, 'Transaction');
 };
 ```
 
@@ -657,9 +669,17 @@ NODE_ENV=production
 ### Service Layer Implementation ✨ **MAJOR UPDATE**
 - **Complete Service Layer**: All controllers now use dedicated service functions
 - **Business Logic Separation**: Database operations moved from controllers to services
-- **Consistent Error Handling**: All services implement try-catch patterns with proper logging
-- **Type Safety**: Enhanced TypeScript types from Prisma throughout services
+- **Structured Error Handling**: All services use `withPrismaErrorHandling` and `ValidationError`
+- **Type Safety**: Enhanced TypeScript interfaces with typed input/output objects
 - **Maintainability**: Clean separation of HTTP concerns from business logic
+- **Consistent Patterns**: Standardized create/update operations with typed data objects
+
+### Type System Enhancement ✨ **NEW**
+- **Typed Service Interfaces**: `CreateInput` and `UpdateData` interfaces for all entities
+- **Input Validation**: Structured validation with proper error messages
+- **Type Safety**: Controllers create typed objects before passing to services
+- **Service Contracts**: Clear data contracts between controller and service layers
+- **Examples**: `CreateGoalInput`, `GoalUpdateData`, `CreateTransactionInput`, etc.
 
 ### Budget Management System ✨ **NEW**
 - **Complete Budget CRUD**: Full budget creation, listing, updating, and deletion

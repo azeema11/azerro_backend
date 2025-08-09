@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { asyncHandler } from '../utils/async_handler';
+import { HoldingUpdateData, CreateHoldingInput } from '../types/service_types';
 import {
   getHoldings as getHoldingsService,
   createHolding as createHoldingService,
@@ -22,6 +23,7 @@ export const createHolding = asyncHandler(async (req: AuthRequest, res: Response
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Create typed input object from request body
   const {
     platform,
     ticker,
@@ -32,8 +34,7 @@ export const createHolding = asyncHandler(async (req: AuthRequest, res: Response
     name,
   } = req.body;
 
-  const result = await createHoldingService(
-    req.userId,
+  const holdingInput: CreateHoldingInput = {
     platform,
     ticker,
     assetType,
@@ -41,7 +42,9 @@ export const createHolding = asyncHandler(async (req: AuthRequest, res: Response
     avgCost,
     holdingCurrency,
     name
-  );
+  };
+
+  const result = await createHoldingService(req.userId, holdingInput);
   res.status(201).json(result);
 });
 
@@ -51,9 +54,23 @@ export const updateHolding = asyncHandler(async (req: AuthRequest, res: Response
   }
 
   const { id } = req.params;
-  const data = req.body;
 
-  const updated = await updateHoldingService(id, data);
+  // Create typed update object from request body
+  const { platform, ticker, assetType, name, quantity, avgCost, holdingCurrency, lastPrice, convertedValue } = req.body;
+
+  const updateData: HoldingUpdateData = {
+    platform,
+    ticker,
+    assetType,
+    name,
+    quantity,
+    avgCost,
+    holdingCurrency,
+    lastPrice,
+    convertedValue
+  };
+
+  const updated = await updateHoldingService(id, req.userId, updateData);
   res.status(200).json(updated);
 });
 
@@ -64,6 +81,6 @@ export const deleteHolding = asyncHandler(async (req: AuthRequest, res: Response
 
   const { id } = req.params;
 
-  await deleteHoldingService(id);
+  await deleteHoldingService(id, req.userId);
   res.status(204).send();
 });

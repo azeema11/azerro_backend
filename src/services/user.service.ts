@@ -1,7 +1,8 @@
 import prisma from '../utils/db';
+import { withNotFoundHandling } from '../utils/prisma_errors';
 
 export const getUserProfile = async (userId: string) => {
-    try {
+    return withNotFoundHandling(async () => {
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { id: true, email: true, name: true, baseCurrency: true, monthlyIncome: true }
@@ -12,10 +13,7 @@ export const getUserProfile = async (userId: string) => {
         }
 
         return user;
-    } catch (err) {
-        console.error('Failed to get user profile:', err);
-        throw err;
-    }
+    }, 'User');
 };
 
 export const updateUserPreferences = async (
@@ -23,8 +21,8 @@ export const updateUserPreferences = async (
     baseCurrency?: string,
     monthlyIncome?: number
 ) => {
-    try {
-        const updatedUser = await prisma.user.update({
+    return withNotFoundHandling(async () => {
+        return await prisma.user.update({
             where: { id: userId },
             data: {
                 ...(baseCurrency && { baseCurrency }),
@@ -32,10 +30,5 @@ export const updateUserPreferences = async (
             },
             select: { id: true, baseCurrency: true, monthlyIncome: true }
         });
-
-        return updatedUser;
-    } catch (err) {
-        console.error('Failed to update user preferences:', err);
-        throw err;
-    }
+    }, 'User');
 }; 

@@ -1,6 +1,8 @@
 import prisma from '../utils/db';
 import { convertCurrencyFromDB } from '../utils/currency';
 import { AssetType } from '@prisma/client';
+import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { HoldingUpdateData, CreateHoldingInput } from '../types/service_types';
 import axios from 'axios';
 
 // Helper function to fetch current price
@@ -30,33 +32,82 @@ export const fetchCurrentPrice = async (ticker: string, assetType: string): Prom
 };
 
 export const getHoldings = async (userId: string) => {
-    try {
-        const holdings = await prisma.holding.findMany({
+    return withPrismaErrorHandling(async () => {
+        return await prisma.holding.findMany({
             where: { userId },
         });
-
-        return holdings;
-    } catch (err) {
-        console.error('Failed to get holdings:', err);
-        throw err;
-    }
+    }, 'Holding');
 };
 
 export const createHolding = async (
     userId: string,
-    platform: string,
-    ticker: string,
-    assetType: AssetType,
-    quantity: number,
-    avgCost: number,
-    holdingCurrency: string,
-    name: string
+    data: CreateHoldingInput
 ) => {
-    try {
-        if (!platform || !ticker || !assetType || !quantity || !avgCost || !holdingCurrency || !name) {
-            throw new Error('Platform, ticker, asset type, quantity, average cost, name, and holding currency are required');
-        }
+    // Validation
+    if (!data.platform?.trim()) {
+        throw new ValidationError(
+            'Platform is required',
+            'Holding',
+            undefined,
+            { field: 'platform', validationType: 'business' }
+        );
+    }
 
+    if (!data.ticker?.trim()) {
+        throw new ValidationError(
+            'Ticker is required',
+            'Holding',
+            undefined,
+            { field: 'ticker', validationType: 'business' }
+        );
+    }
+
+    if (!data.assetType) {
+        throw new ValidationError(
+            'Asset type is required',
+            'Holding',
+            undefined,
+            { field: 'assetType', validationType: 'business' }
+        );
+    }
+
+    if (!data.quantity || data.quantity <= 0) {
+        throw new ValidationError(
+            'Quantity must be greater than 0',
+            'Holding',
+            undefined,
+            { field: 'quantity', validationType: 'business' }
+        );
+    }
+
+    if (!data.avgCost || data.avgCost <= 0) {
+        throw new ValidationError(
+            'Average cost must be greater than 0',
+            'Holding',
+            undefined,
+            { field: 'avgCost', validationType: 'business' }
+        );
+    }
+
+    if (!data.holdingCurrency?.trim()) {
+        throw new ValidationError(
+            'Holding currency is required',
+            'Holding',
+            undefined,
+            { field: 'holdingCurrency', validationType: 'business' }
+        );
+    }
+
+    if (!data.name?.trim()) {
+        throw new ValidationError(
+            'Name is required',
+            'Holding',
+            undefined,
+            { field: 'name', validationType: 'business' }
+        );
+    }
+
+    return withPrismaErrorHandling(async () => {
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { baseCurrency: true },
@@ -65,25 +116,25 @@ export const createHolding = async (
         const baseCurrency = user?.baseCurrency ?? 'INR';
 
         // Fetch current price automatically
-        const currentPrice = await fetchCurrentPrice(ticker, assetType);
+        const currentPrice = await fetchCurrentPrice(data.ticker, data.assetType);
         const lastPrice = currentPrice || 0; // Default to 0 if price fetch fails
 
         // Calculate converted value using current price (in USD from APIs)
         const convertedValue = currentPrice
-            ? await convertCurrencyFromDB(quantity * currentPrice, 'USD', baseCurrency)
+            ? await convertCurrencyFromDB(data.quantity * currentPrice, 'USD', baseCurrency)
             : 0;
 
         const holding = await prisma.holding.create({
             data: {
-                platform,
-                ticker,
-                assetType,
-                quantity,
-                avgCost,
-                holdingCurrency,
+                platform: data.platform.trim(),
+                ticker: data.ticker.trim().toUpperCase(),
+                assetType: data.assetType,
+                quantity: data.quantity,
+                avgCost: data.avgCost,
+                holdingCurrency: data.holdingCurrency.trim().toUpperCase(),
                 lastPrice,
                 convertedValue,
-                name,
+                name: data.name.trim(),
                 userId,
             },
         });
@@ -94,31 +145,26 @@ export const createHolding = async (
                 ? 'Current price fetched automatically'
                 : 'Price will be updated in next refresh cycle'
         };
-    } catch (err) {
-        console.error('Failed to create holding:', err);
-        throw err;
-    }
+    }, 'Holding');
 };
 
-export const updateHolding = async (id: string, data: any) => {
-    try {
-        const updated = await prisma.holding.update({
-            where: { id },
+export const updateHolding = async (id: string, userId: string, data: HoldingUpdateData) => {
+    return withNotFoundHandling(async () => {
+        return await prisma.holding.update({
+            where: {
+                id_userId: { id, userId }
+            },
             data,
         });
-
-        return updated;
-    } catch (err) {
-        console.error('Failed to update holding:', err);
-        throw err;
-    }
+    }, 'Holding');
 };
 
-export const deleteHolding = async (id: string) => {
-    try {
-        await prisma.holding.delete({ where: { id } });
-    } catch (err) {
-        console.error('Failed to delete holding:', err);
-        throw err;
-    }
+export const deleteHolding = async (id: string, userId: string) => {
+    return withNotFoundHandling(async () => {
+        await prisma.holding.delete({
+            where: {
+                id_userId: { id, userId }
+            }
+        });
+    }, 'Holding');
 }; 

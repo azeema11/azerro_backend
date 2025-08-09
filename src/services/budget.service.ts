@@ -1,96 +1,92 @@
 import prisma from "../utils/db";
-import { Category, Periodicity } from "@prisma/client";
+import { Category, Periodicity, TransactionType } from "@prisma/client";
+import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { CreateBudgetInput, BudgetUpdateData } from '../types/service_types';
 import { getPeriodDates } from "../utils/date";
 import { getTotalConverted } from "../utils/currency";
 
-export const createNewBudget = async (userId: string, category: Category, amount: number, period: Periodicity) => {
-    try {
-        if (!category || !amount || !period) {
-            throw new Error('category, amount, and period are required');
-        }
+export const createNewBudget = async (userId: string, data: CreateBudgetInput) => {
+    // Validation
+    if (!data.category) {
+        throw new ValidationError(
+            'Category is required',
+            'Budget',
+            undefined,
+            { field: 'category', validationType: 'business' }
+        );
+    }
 
-        const newBudget = await prisma.budget.create({
+    if (!data.amount || data.amount <= 0) {
+        throw new ValidationError(
+            'Amount must be greater than 0',
+            'Budget',
+            undefined,
+            { field: 'amount', validationType: 'business' }
+        );
+    }
+
+    if (!data.period) {
+        throw new ValidationError(
+            'Period is required',
+            'Budget',
+            undefined,
+            { field: 'period', validationType: 'business' }
+        );
+    }
+
+    return withPrismaErrorHandling(async () => {
+        return await prisma.budget.create({
             data: {
                 userId,
-                category,
-                amount,
-                period,
+                category: data.category,
+                amount: data.amount,
+                period: data.period,
             },
         });
-
-        return newBudget;
-    } catch (err) {
-        console.error('Failed to create budget:', err);
-        throw err;
-    }
+    }, 'Budget');
 };
 
 export const getUserBudgets = async (userId: string) => {
-    try {
-        const budgets = await prisma.budget.findMany({
+    return withPrismaErrorHandling(async () => {
+        return await prisma.budget.findMany({
             where: { userId },
             orderBy: { createdAt: 'desc' },
         });
-
-        return budgets;
-    } catch (err) {
-        console.error('Failed to fetch budgets:', err);
-        throw err;
-    }
+    }, 'Budget');
 };
 
-export const updateUserBudget = async (id: string, amount: number, category: Category, period: Periodicity) => {
-    try {
-        const existingBudget = await prisma.budget.findUnique({
-            where: { id },
-        });
-
-        if (!existingBudget) {
-            throw new Error('Budget not found');
-        }
-
-        const updatedBudget = await prisma.budget.update({
-            where: { id },
-            data: {
-                amount,
-                category,
-                period,
+export const updateUserBudget = async (id: string, userId: string, data: BudgetUpdateData) => {
+    return withNotFoundHandling(async () => {
+        return await prisma.budget.update({
+            where: {
+                id_userId: { id, userId }
             },
+            data,
         });
-
-        return updatedBudget;
-    } catch (err) {
-        console.error('Failed to update budget:', err);
-        throw err;
-    }
+    }, 'Budget');
 };
 
 export const deleteUserBudget = async (id: string, userId: string) => {
-    try {
-
-        const existingBudget = await prisma.budget.findUnique({
-            where: { id },
-        });
-
-        if (!existingBudget || existingBudget.userId !== userId) {
-            throw new Error('Budget not found');
-        }
-
+    return withNotFoundHandling(async () => {
         await prisma.budget.delete({
-            where: { id },
+            where: {
+                id_userId: { id, userId }
+            }
         });
 
         return { success: true };
-    } catch (err) {
-        console.error('Failed to delete budget:', err);
-        throw err;
-    }
+    }, 'Budget');
 };
 
 export const getUserBudgetPerformance = async (userId: string) => {
-    try {
+    return withPrismaErrorHandling(async () => {
         const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) throw new Error('User not found');
+        if (!user) throw new ValidationError(
+            'User not found',
+            'Budget',
+            undefined,
+            { field: 'userId', validationType: 'business' }
+        );
 
         const budgets = await prisma.budget.findMany({ where: { userId } });
 
@@ -104,6 +100,7 @@ export const getUserBudgetPerformance = async (userId: string) => {
                     prisma.transaction.findMany({
                         where: {
                             userId,
+                            type: TransactionType.EXPENSE,
                             category,
                             date: { gte: dateRange.start, lte: dateRange.end },
                         },
@@ -138,8 +135,5 @@ export const getUserBudgetPerformance = async (userId: string) => {
         );
 
         return results;
-    } catch (err) {
-        console.error('Failed to fetch budget performance:', err);
-        throw err;
-    }
+    }, 'Budget');
 };

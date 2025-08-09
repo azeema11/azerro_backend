@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { asyncHandler } from "../utils/async_handler";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { CreatePlannedEventInput, PlannedEventUpdateData } from "../types/service_types";
 import {
     createPlannedEvent,
     listPlannedEvents,
@@ -14,7 +15,20 @@ export const addPlannedEvent = asyncHandler(async (req: AuthRequest, res: Respon
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const event = await createPlannedEvent(userId, req.body);
+    // Create typed input object from request body
+    const { name, targetDate, estimatedCost, savedSoFar, currency, category, recurrence } = req.body;
+
+    const plannedEventInput: CreatePlannedEventInput = {
+        name,
+        targetDate,
+        estimatedCost,
+        savedSoFar,
+        currency,
+        category,
+        recurrence
+    };
+
+    const event = await createPlannedEvent(userId, plannedEventInput);
     res.status(201).json(event);
 });
 
@@ -30,7 +44,22 @@ export const editPlannedEvent = asyncHandler(async (req: AuthRequest, res: Respo
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    await updatePlannedEvent(userId, req.params.id, req.body);
+    // Create typed update object from request body
+    const { name, targetDate, estimatedCost, savedSoFar, currency, category, recurrence, completed, completedTxId } = req.body;
+
+    const updateData: PlannedEventUpdateData = {
+        name,
+        targetDate,
+        estimatedCost,
+        savedSoFar,
+        currency,
+        category,
+        recurrence,
+        completed,
+        completedTxId
+    };
+
+    await updatePlannedEvent(userId, req.params.id, updateData);
     res.status(200).json({ success: true });
 });
 

@@ -1,43 +1,121 @@
-import { TransactionType } from "@prisma/client";
+import { TransactionType, Periodicity } from "@prisma/client";
 import prisma from "../utils/db";
 import { convertCurrencyFromDB } from "../utils/currency";
-import { daysBetween, detectFrequency } from "../utils/date";
+import { daysBetween, detectFrequency, getPeriodDates } from "../utils/date";
 import { groupBy } from "../utils/utils";
 
 export async function getExpenseSummary(userId: string, start?: string, end?: string) {
+    // Validate date strings if provided
+    if (start && isNaN(Date.parse(start))) {
+        throw new Error('Invalid start date format');
+    }
+    if (end && isNaN(Date.parse(end))) {
+        throw new Error('Invalid end date format');
+    }
+
     const startDate = start ? new Date(start) : new Date("2000-01-01");
     const endDate = end ? new Date(end) : new Date();
 
-    const transactions = await prisma.transaction.groupBy({
-        by: ['category'],
+    // Get user's base currency
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('User not found');
+
+    // Get individual transactions instead of groupBy to handle currency conversion
+    const transactions = await prisma.transaction.findMany({
         where: {
             userId,
             type: TransactionType.EXPENSE,
             date: { gte: startDate, lte: endDate }
-        },
-        _sum: {
-            amount: true
         }
     });
 
-    const total = transactions.reduce((sum, t) => sum + (t._sum.amount ?? 0), 0);
+    // Group by category with proper currency conversion
+    const categoryMap = new Map<string, number>();
+    let total = 0;
+
+    for (const transaction of transactions) {
+        const convertedAmount = await convertCurrencyFromDB(
+            transaction.amount,
+            transaction.currency,
+            user.baseCurrency
+        );
+
+        total += convertedAmount;
+        categoryMap.set(
+            transaction.category,
+            (categoryMap.get(transaction.category) || 0) + convertedAmount
+        );
+    }
 
     return {
-        total,
-        byCategory: transactions.map(t => ({
-            category: t.category,
-            total: t._sum.amount ?? 0
+        total: parseFloat(total.toFixed(2)),
+        currency: user.baseCurrency,
+        byCategory: Array.from(categoryMap.entries()).map(([category, amount]) => ({
+            category,
+            total: parseFloat(amount.toFixed(2))
         }))
     };
 }
 
-export async function getMonthlyIncomeVsExpense(userId: string) {
+export async function getIncomeSummary(userId: string, start?: string, end?: string) {
+    // Validate date strings if provided
+    if (start && isNaN(Date.parse(start))) {
+        throw new Error('Invalid start date format');
+    }
+    if (end && isNaN(Date.parse(end))) {
+        throw new Error('Invalid end date format');
+    }
+
+    const startDate = start ? new Date(start) : new Date("2000-01-01");
+    const endDate = end ? new Date(end) : new Date();
+
+    // Get user's base currency
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
 
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Get individual income transactions
+    const transactions = await prisma.transaction.findMany({
+        where: {
+            userId,
+            type: TransactionType.INCOME,
+            date: { gte: startDate, lte: endDate }
+        }
+    });
+
+    // Group by category with proper currency conversion
+    const categoryMap = new Map<string, number>();
+    let total = 0;
+
+    for (const transaction of transactions) {
+        const convertedAmount = await convertCurrencyFromDB(
+            transaction.amount,
+            transaction.currency,
+            user.baseCurrency
+        );
+
+        total += convertedAmount;
+        categoryMap.set(
+            transaction.category,
+            (categoryMap.get(transaction.category) || 0) + convertedAmount
+        );
+    }
+
+    return {
+        total: parseFloat(total.toFixed(2)),
+        currency: user.baseCurrency,
+        byCategory: Array.from(categoryMap.entries()).map(([category, amount]) => ({
+            category,
+            total: parseFloat(amount.toFixed(2))
+        }))
+    };
+}
+
+export async function getIncomeVsExpense(userId: string, period: Periodicity = Periodicity.MONTHLY, date = new Date()) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('User not found');
+
+    // Use getPeriodDates helper to get correct date range for any period type
+    const { start: from, end: to } = getPeriodDates(period, date);
 
     const transactions = await prisma.transaction.findMany({
         where: {
@@ -62,8 +140,36 @@ export async function getMonthlyIncomeVsExpense(userId: string) {
         }
     }
 
+    // Generate period label based on period type
+    let periodLabel: string;
+    switch (period) {
+        case Periodicity.DAILY:
+            periodLabel = date.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+            break;
+        case Periodicity.WEEKLY:
+            periodLabel = `Week of ${from.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+            break;
+        case Periodicity.MONTHLY:
+            periodLabel = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+            break;
+        case Periodicity.QUARTERLY:
+            const quarter = Math.floor(date.getMonth() / 3) + 1;
+            periodLabel = `Q${quarter} ${date.getFullYear()}`;
+            break;
+        case Periodicity.HALF_YEARLY:
+            const half = date.getMonth() < 6 ? 'H1' : 'H2';
+            periodLabel = `${half} ${date.getFullYear()}`;
+            break;
+        case Periodicity.YEARLY:
+            periodLabel = date.getFullYear().toString();
+            break;
+        default:
+            periodLabel = period;
+    }
+
     return {
-        month: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        period: periodLabel,
+        periodType: period,
         income,
         expense,
         net: income - expense,
@@ -71,7 +177,20 @@ export async function getMonthlyIncomeVsExpense(userId: string) {
     };
 }
 
+// Backward compatibility alias
+export async function getMonthlyIncomeVsExpense(userId: string) {
+    return getIncomeVsExpense(userId, Periodicity.MONTHLY);
+}
+
 export async function getCategoryBreakdown(userId: string, startDate?: string, endDate?: string) {
+    // Validate date strings if provided
+    if (startDate && isNaN(Date.parse(startDate))) {
+        throw new Error('Invalid start date format');
+    }
+    if (endDate && isNaN(Date.parse(endDate))) {
+        throw new Error('Invalid end date format');
+    }
+
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
@@ -82,8 +201,8 @@ export async function getCategoryBreakdown(userId: string, startDate?: string, e
     const transactions = await prisma.transaction.findMany({
         where: {
             userId,
+            type: TransactionType.EXPENSE,
             date: { gte: from, lte: to },
-            amount: { gt: 0 }, // Expense is positive outflow
         },
     });
 
@@ -144,27 +263,28 @@ export async function getAssetAllocation(userId: string, groupBy: 'assetType' | 
     };
 }
 
-export async function getBudgetVsActual(userId: string, period: 'MONTHLY' | 'WEEKLY' | 'YEARLY' = 'MONTHLY', date = new Date()) {
+export async function getBudgetVsActual(userId: string, period: Periodicity = Periodicity.MONTHLY, date = new Date()) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
-    const periodStart = new Date(date.getFullYear(), date.getMonth(), 1);
-    const periodEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Use getPeriodDates helper to get correct date range for any period type
+    const { start: periodStart, end: periodEnd } = getPeriodDates(period, date);
 
     const [budgets, transactions, plannedEvents] = await Promise.all([
-        prisma.budget.findMany({ 
-            where: { 
-                userId, 
-                period 
-            }, 
+        prisma.budget.findMany({
+            where: {
+                userId,
+                period
+            },
         }),
         prisma.transaction.findMany({
-            where: { 
-                userId, 
-                date: { 
-                    gte: periodStart, 
-                    lte: periodEnd 
-                }, 
+            where: {
+                userId,
+                type: TransactionType.EXPENSE,
+                date: {
+                    gte: periodStart,
+                    lte: periodEnd
+                },
             },
         }),
         prisma.plannedEvent.findMany({
@@ -192,9 +312,9 @@ export async function getBudgetVsActual(userId: string, period: 'MONTHLY' | 'WEE
         spent: parseFloat((actualsMap.get(budget.category) || 0).toFixed(2)),
     }));
 
-    return { 
-        currency: user.baseCurrency, 
-        period, 
+    return {
+        currency: user.baseCurrency,
+        period,
         result,
     };
 }

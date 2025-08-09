@@ -1,68 +1,88 @@
 import { AccountType } from '@prisma/client';
 import prisma from '../utils/db';
+import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { BankAccountUpdateData, CreateBankAccountInput } from '../types/service_types';
 
 export const createBankAccount = async (
     userId: string,
-    name: string,
-    type: AccountType,
-    balance: number,
-    currency: string
+    data: CreateBankAccountInput
 ) => {
-    try {
-        if (!name || !type || balance === undefined || !currency) {
-            throw new Error('Name, type, balance, and currency are required');
-        }
+    // Validation
+    if (!data.name?.trim()) {
+        throw new ValidationError(
+            'Bank account name is required',
+            'BankAccount',
+            undefined,
+            { field: 'name', validationType: 'business' }
+        );
+    }
 
-        const account = await prisma.bankAccount.create({
+    if (!data.type) {
+        throw new ValidationError(
+            'Account type is required',
+            'BankAccount',
+            undefined,
+            { field: 'type', validationType: 'business' }
+        );
+    }
+
+    if (data.balance !== undefined && data.balance < 0) {
+        throw new ValidationError(
+            'Balance must be a non-negative number',
+            'BankAccount',
+            undefined,
+            { field: 'balance', validationType: 'business' }
+        );
+    }
+
+    if (data.currency && !data.currency.trim()) {
+        throw new ValidationError(
+            'Currency cannot be empty',
+            'BankAccount',
+            undefined,
+            { field: 'currency', validationType: 'business' }
+        );
+    }
+
+    return withPrismaErrorHandling(async () => {
+        return await prisma.bankAccount.create({
             data: {
-                name,
-                type,
-                balance,
-                currency,
+                name: data.name.trim(),
+                type: data.type,
+                balance: data.balance || 0,
+                currency: data.currency?.trim().toUpperCase() || 'USD',
                 userId,
             },
         });
-
-        return account;
-    } catch (err) {
-        console.error('Failed to create bank account:', err);
-        throw err;
-    }
+    }, 'BankAccount');
 };
 
 export const getBankAccounts = async (userId: string) => {
-    try {
-        const accounts = await prisma.bankAccount.findMany({
+    return withPrismaErrorHandling(async () => {
+        return await prisma.bankAccount.findMany({
             where: { userId },
             orderBy: { createdAt: 'desc' },
         });
-
-        return accounts;
-    } catch (err) {
-        console.error('Failed to get bank accounts:', err);
-        throw err;
-    }
+    }, 'BankAccount');
 };
 
-export const updateBankAccount = async (id: string, data: any) => {
-    try {
-        const updated = await prisma.bankAccount.update({
-            where: { id },
+export const updateBankAccount = async (id: string, userId: string, data: BankAccountUpdateData) => {
+    return withNotFoundHandling(async () => {
+        return await prisma.bankAccount.update({
+            where: {
+                id_userId: { id, userId }
+            },
             data,
         });
-
-        return updated;
-    } catch (err) {
-        console.error('Failed to update bank account:', err);
-        throw err;
-    }
+    }, 'Bank account');
 };
 
-export const deleteBankAccount = async (id: string) => {
-    try {
-        await prisma.bankAccount.delete({ where: { id } });
-    } catch (err) {
-        console.error('Failed to delete bank account:', err);
-        throw err;
-    }
+export const deleteBankAccount = async (id: string, userId: string) => {
+    return withNotFoundHandling(async () => {
+        await prisma.bankAccount.delete({
+            where: {
+                id_userId: { id, userId }
+            }
+        });
+    }, 'Bank account');
 }; 

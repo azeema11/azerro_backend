@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { detectRecurringTransactions, getAssetAllocation, getBudgetVsActual, getCategoryBreakdown, getExpenseSummary, getGoalProgressReport, getMonthlyIncomeVsExpense } from "../services/report.service";
+import { Periodicity } from "@prisma/client";
+import { detectRecurringTransactions, getAssetAllocation, getBudgetVsActual, getCategoryBreakdown, getExpenseSummary, getGoalProgressReport, getMonthlyIncomeVsExpense, getIncomeVsExpense } from "../services/report.service";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { asyncHandler } from "../utils/async_handler";
 
@@ -23,6 +24,22 @@ export const monthlyIncomeVsExpense = asyncHandler(async (req: AuthRequest, res:
     }
 
     const report = await getMonthlyIncomeVsExpense(userId);
+    res.status(200).json(report);
+});
+
+export const incomeVsExpense = asyncHandler(async (req: AuthRequest, res: Response) => {
+    const userId = req.userId;
+    const { period, date } = req.query;
+
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Validate and default the period parameter
+    const validPeriod = period as Periodicity || Periodicity.MONTHLY;
+    const referenceDate = date ? new Date(date as string) : new Date();
+
+    const report = await getIncomeVsExpense(userId, validPeriod, referenceDate);
     res.status(200).json(report);
 });
 
@@ -52,13 +69,17 @@ export const assetAllocation = asyncHandler(async (req: AuthRequest, res: Respon
 
 export const budgetVsActual = asyncHandler(async (req: AuthRequest, res: Response) => {
     const userId = req.userId;
-    const { period } = req.query;
+    const { period, date } = req.query;
 
     if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const report = await getBudgetVsActual(userId, period as 'MONTHLY' | 'WEEKLY' | 'YEARLY' || 'MONTHLY');
+    // Validate and default the period parameter
+    const validPeriod = period as Periodicity || Periodicity.MONTHLY;
+    const referenceDate = date ? new Date(date as string) : new Date();
+
+    const report = await getBudgetVsActual(userId, validPeriod, referenceDate);
     res.status(200).json(report);
 });
 

@@ -1,80 +1,102 @@
 import prisma from '../utils/db';
 import { Category, TransactionType } from '@prisma/client';
+import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { TransactionUpdateData, CreateTransactionInput } from '../types/service_types';
 
 export const getTransactions = async (userId: string, type?: TransactionType) => {
-    try {
+    return withPrismaErrorHandling(async () => {
         const whereClause: any = { userId };
 
         if (type && (type === TransactionType.INCOME || type === TransactionType.EXPENSE)) {
             whereClause.type = type;
         }
 
-        const transactions = await prisma.transaction.findMany({
+        return await prisma.transaction.findMany({
             where: whereClause,
             orderBy: { date: 'desc' },
+            include: {
+                bankAccount: {
+                    select: { name: true }
+                }
+            }
         });
-
-        return transactions;
-    } catch (err) {
-        console.error('Failed to get transactions:', err);
-        throw err;
-    }
+    }, 'Transaction');
 };
 
 export const createTransaction = async (
     userId: string,
-    amount: number,
-    currency: string,
-    category: Category,
-    date: string,
-    type?: TransactionType,
-    description?: string,
-    bankAccountId?: string
+    data: CreateTransactionInput
 ) => {
-    try {
-        if (!amount || !currency || !category || !date) {
-            throw new Error('Amount, currency, category, and date are required');
-        }
+    // Validation
+    if (!data.amount || data.amount === 0) {
+        throw new ValidationError(
+            'Transaction amount is required and cannot be zero',
+            'Transaction',
+            undefined,
+            { field: 'amount', validationType: 'business' }
+        );
+    }
 
-        const txn = await prisma.transaction.create({
+    if (!data.currency?.trim()) {
+        throw new ValidationError(
+            'Currency is required',
+            'Transaction',
+            undefined,
+            { field: 'currency', validationType: 'business' }
+        );
+    }
+
+    if (!data.category) {
+        throw new ValidationError(
+            'Category is required',
+            'Transaction',
+            undefined,
+            { field: 'category', validationType: 'business' }
+        );
+    }
+
+    if (!data.date) {
+        throw new ValidationError(
+            'Transaction date is required',
+            'Transaction',
+            undefined,
+            { field: 'date', validationType: 'business' }
+        );
+    }
+
+    return withPrismaErrorHandling(async () => {
+        return await prisma.transaction.create({
             data: {
                 userId,
-                amount,
-                currency,
-                category,
-                type: type || TransactionType.EXPENSE, // Default to EXPENSE if not provided
-                description,
-                date: new Date(date),
-                bankAccountId,
+                amount: data.amount,
+                currency: data.currency.trim().toUpperCase(),
+                category: data.category,
+                type: data.type || TransactionType.EXPENSE,
+                description: data.description?.trim() || null,
+                date: new Date(data.date),
+                bankAccountId: data.bankAccountId,
             },
         });
-
-        return txn;
-    } catch (err) {
-        console.error('Failed to create transaction:', err);
-        throw err;
-    }
+    }, 'Transaction');
 };
 
-export const updateTransaction = async (id: string, data: any) => {
-    try {
-        const updated = await prisma.transaction.update({
-            where: { id },
+export const updateTransaction = async (id: string, userId: string, data: TransactionUpdateData) => {
+    return withNotFoundHandling(async () => {
+        return await prisma.transaction.update({
+            where: {
+                id_userId: { id, userId }
+            },
             data,
         });
-
-        return updated;
-    } catch (err) {
-        console.error('Failed to update transaction:', err);
-        throw err;
-    }
+    }, 'Transaction');
 };
 
-export const deleteTransaction = async (id: string) => {
-    try {
-        await prisma.transaction.delete({ where: { id } });
-    } catch (err) {
-        console.error('Failed to delete transaction:', err);
-        throw err;
-    }
+export const deleteTransaction = async (id: string, userId: string) => {
+    return withNotFoundHandling(async () => {
+        await prisma.transaction.delete({
+            where: {
+                id_userId: { id, userId }
+            }
+        });
+    }, 'Transaction');
 }; 

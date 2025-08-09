@@ -10,11 +10,11 @@ import {
 
 const router = Router();
 
-router.post("/", addPlannedEvent);
 router.get("/", getPlannedEvents);
-router.put("/:id", editPlannedEvent);
-router.delete("/:id", removePlannedEvent);
+router.post("/", addPlannedEvent);
 router.put("/complete/:id", setPlannedEventComplete);
 router.put("/reset/:id", resetPlannedEventComplete);
+router.put("/:id", editPlannedEvent);
+router.delete("/:id", removePlannedEvent);
 
 export default router;

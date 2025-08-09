@@ -12,11 +12,11 @@ import {
 const router = Router();
 
 router.get('/', getGoals);
-router.post('/', createGoal);
 router.get('/conflicts', getGoalConflicts);
+router.get('/:id', getGoalById);
+router.post('/', createGoal);
+router.post('/:id/contribute', contributeToGoal);
 router.put('/:id', updateGoal);
 router.delete('/:id', deleteGoal);
-router.get('/:id', getGoalById);
-router.post('/:id/contribute', contributeToGoal);
 
 export default router;

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { asyncHandler } from '../utils/async_handler';
+import { CreateTransactionInput, TransactionUpdateData } from '../types/service_types';
 import { TransactionType } from '@prisma/client';
 import {
   getTransactions as getTransactionsService,
@@ -25,10 +26,10 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Create typed input object from request body
   const { amount, currency, category, type, description, date, bankAccountId } = req.body;
 
-  const txn = await createTransactionService(
-    req.userId,
+  const transactionInput: CreateTransactionInput = {
     amount,
     currency,
     category,
@@ -36,7 +37,9 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
     type,
     description,
     bankAccountId
-  );
+  };
+
+  const txn = await createTransactionService(req.userId, transactionInput);
   res.status(201).json(txn);
 });
 
@@ -46,9 +49,21 @@ export const updateTransaction = asyncHandler(async (req: AuthRequest, res: Resp
   }
 
   const { id } = req.params;
-  const data = req.body;
 
-  const updated = await updateTransactionService(id, data);
+  // Create typed update object from request body
+  const { amount, currency, category, type, description, date, bankAccountId } = req.body;
+
+  const updateData: TransactionUpdateData = {
+    amount,
+    currency,
+    category,
+    type,
+    description,
+    date,
+    bankAccountId
+  };
+
+  const updated = await updateTransactionService(id, req.userId, updateData);
   res.status(200).json(updated);
 });
 
@@ -58,6 +73,6 @@ export const deleteTransaction = asyncHandler(async (req: AuthRequest, res: Resp
   }
 
   const { id } = req.params;
-  await deleteTransactionService(id);
+  await deleteTransactionService(id, req.userId);
   res.status(204).send();
 });

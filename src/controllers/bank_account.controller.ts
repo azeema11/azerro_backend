@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { asyncHandler } from '../utils/async_handler';
+import { BankAccountUpdateData, CreateBankAccountInput } from '../types/service_types';
 import {
   createBankAccount,
   getBankAccounts,
@@ -14,9 +15,17 @@ export const createAccount = asyncHandler(async (req: AuthRequest, res: Response
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Create typed input object from request body
   const { name, type, balance, currency } = req.body;
 
-  const account = await createBankAccount(req.userId, name, type, balance, currency);
+  const accountInput: CreateBankAccountInput = {
+    name,
+    type,
+    balance,
+    currency
+  };
+
+  const account = await createBankAccount(req.userId, accountInput);
   res.status(201).json(account);
 });
 
@@ -35,9 +44,18 @@ export const updateAccount = asyncHandler(async (req: AuthRequest, res: Response
   }
 
   const { id } = req.params;
-  const data = req.body;
 
-  const updated = await updateBankAccount(id, data);
+  // Create typed update object from request body
+  const { name, type, balance, currency } = req.body;
+
+  const updateData: BankAccountUpdateData = {
+    name,
+    type,
+    balance,
+    currency
+  };
+
+  const updated = await updateBankAccount(id, req.userId, updateData);
   res.status(200).json(updated);
 });
 
@@ -48,6 +66,6 @@ export const deleteAccount = asyncHandler(async (req: AuthRequest, res: Response
 
   const { id } = req.params;
 
-  await deleteBankAccount(id);
+  await deleteBankAccount(id, req.userId);
   res.status(204).send();
 });

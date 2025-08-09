@@ -221,24 +221,25 @@ Types of financial transactions:
 ## Migration History
 
 The database has evolved through several migrations:
-1. **Initial Schema** (20250614080043): Core tables and relationships
-2. **Holdings Enhancement** (20250614093831): Added platform and currency fields
-3. **Base Currency** (20250614101152): Moved base currency to user level
-4. **Currency Rates** (20250614102421): Added currency conversion support
-5. **Goals System** (20250614105420): Added financial goals
-6. **User Enhancements** (20250614112314-20250614113100): Added user fields and names
-7. **Holdings Names** (20250614154131): Added human-readable names to holdings
-8. **Transaction Types** (20250724091715): Added TransactionType enum and type field for income/expense classification
+1. **Initial Migration** (20250809054235): Complete schema with all core tables and relationships
+2. **Planned Event Enhancement** (20250809065218): Added completedTxId field to PlannedEvent for transaction tracking
+3. **Referential Integrity** (20250809135652): Enhanced foreign key constraints and database indexes for performance
+4. **Compound Unique Constraints** (20250809142129): Added composite unique constraints for data integrity
 
 This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, goal setting, and financial reporting capabilities.
 
 ## 🆕 Recent Schema Enhancements
 
-### Transaction Type Classification (v1.1)
-- **New Enum**: `TransactionType` with INCOME and EXPENSE values
-- **Enhanced Transaction Model**: Added `type` field with EXPENSE default
-- **Backward Compatibility**: All existing transactions automatically classified as EXPENSE
-- **Migration Applied**: 20250724091715_add_transaction_type
+### Database Integrity & Performance (v2.0) ✨ **LATEST**
+- **Enhanced Constraints**: Composite unique constraints for improved data integrity
+- **Referential Integrity**: Strengthened foreign key relationships across all tables
+- **Performance Optimization**: Strategic database indexes for faster query execution
+- **Transaction Tracking**: PlannedEvent can now track completion via linked transactions
+
+### Data Architecture Foundation
+- **Complete Type System**: Full TypeScript integration with Prisma-generated types
+- **Service Layer Integration**: Database operations abstracted through dedicated service functions
+- **Error Handling**: Structured error handling with proper database error translation
 
 ### Financial Analytics Foundation
 - **Category Grouping**: Enhanced for expense summary and category breakdown reporting
@@ -256,4 +257,12 @@ This schema supports a comprehensive personal finance management system with mul
 - **Automatic Timestamps**: All entities track creation and modification times
 - **UUID Primary Keys**: Enhanced security and distribution across all tables
 - **Referential Integrity**: Proper foreign key relationships with cascade handling
-- **Default Values**: Sensible defaults for optional fields to ensure data consistency 
+- **Default Values**: Sensible defaults for optional fields to ensure data consistency
+- **Composite Constraints**: Prevent duplicate records with multi-field unique constraints
+- **Indexed Relationships**: Optimized foreign key relationships for faster queries
+
+### Service Layer Integration ✨ **NEW**
+- **Typed Operations**: All database operations use structured TypeScript interfaces
+- **Error Translation**: Database errors automatically converted to domain-specific errors
+- **Validation Layer**: Business logic validation before database operations
+- **Consistent Patterns**: Uniform CRUD operations across all entities 
