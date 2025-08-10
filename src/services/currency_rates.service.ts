@@ -160,15 +160,30 @@ async function usePreviousDayRates(base = 'USD') {
 
 export async function ensureCurrencyRatesExist() {
     try {
-        const count = await prisma.currencyRate.count();
-        if (count === 0) {
-            console.log('No currency rates found, fetching initial rates...');
+        const currentRatesCount = await prisma.currencyRate.count();
+
+        // Check if we have historical rates for today
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+        const todayHistoricalCount = await prisma.currencyRateHistory.count({
+            where: { rateDate: today }
+        });
+
+        // If no current rates OR no historical rates for today, fetch fresh rates
+        if (currentRatesCount === 0 || todayHistoricalCount === 0) {
+            if (currentRatesCount === 0) {
+                console.log('No current currency rates found, fetching initial rates...');
+            } else {
+                console.log(`Found ${currentRatesCount} current rates but no historical rates for today, fetching fresh rates...`);
+            }
+
             const success = await updateCurrencyRates('USD');
             if (!success) {
-                throw new Error('Failed to fetch initial currency rates and no existing rates available');
+                throw new Error('Failed to fetch currency rates and no existing rates available');
             }
         } else {
-            console.log(`Found ${count} existing currency rates`);
+            console.log(`Found ${currentRatesCount} current currency rates and ${todayHistoricalCount} historical rates for today`);
         }
     } catch (err) {
         console.error(`❌ Failed to ensure currency rates exist:`, err);
