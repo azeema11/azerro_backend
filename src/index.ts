@@ -13,6 +13,7 @@ import prisma from './utils/db';
 import { scheduleCurrencyRateRefresh } from './jobs/refresh_currency_rates.job';
 import { ensureCurrencyRatesExist } from './services/currency_rates.service';
 import { scheduleHoldingRefresh } from './jobs/refresh_holdings.job';
+import { scheduleDatabaseMaintenance } from './jobs/database_maintenance.job';
 import reportsRouter from './routes/report.routes';
 import budgetRouter from './routes/budget.route';
 import plannedEventRouter from './routes/planned_event.route';
@@ -90,6 +91,7 @@ const server = app.listen(PORT, () => {
         await ensureCurrencyRatesExist();
         scheduleHoldingRefresh();
         scheduleCurrencyRateRefresh();
+        scheduleDatabaseMaintenance();
         console.log('✅ Background services initialized');
     } catch (error) {
         console.error('❌ Failed to initialize background services:', error);

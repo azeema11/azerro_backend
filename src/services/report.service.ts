@@ -1,6 +1,6 @@
 import { TransactionType, Periodicity } from "@prisma/client";
 import prisma from "../utils/db";
-import { convertCurrencyFromDB } from "../utils/currency";
+import { convertCurrencyFromDB, convertCurrencyFromDBHistorical } from "../utils/currency";
 import { daysBetween, detectFrequency, getPeriodDates } from "../utils/date";
 import { groupBy } from "../utils/utils";
 
@@ -29,15 +29,16 @@ export async function getExpenseSummary(userId: string, start?: string, end?: st
         }
     });
 
-    // Group by category with proper currency conversion
+    // Group by category with proper historical currency conversion
     const categoryMap = new Map<string, number>();
     let total = 0;
 
     for (const transaction of transactions) {
-        const convertedAmount = await convertCurrencyFromDB(
+        const convertedAmount = await convertCurrencyFromDBHistorical(
             transaction.amount,
             transaction.currency,
-            user.baseCurrency
+            user.baseCurrency,
+            transaction.date
         );
 
         total += convertedAmount;
@@ -82,15 +83,16 @@ export async function getIncomeSummary(userId: string, start?: string, end?: str
         }
     });
 
-    // Group by category with proper currency conversion
+    // Group by category with proper historical currency conversion
     const categoryMap = new Map<string, number>();
     let total = 0;
 
     for (const transaction of transactions) {
-        const convertedAmount = await convertCurrencyFromDB(
+        const convertedAmount = await convertCurrencyFromDBHistorical(
             transaction.amount,
             transaction.currency,
-            user.baseCurrency
+            user.baseCurrency,
+            transaction.date
         );
 
         total += convertedAmount;
@@ -131,7 +133,7 @@ export async function getIncomeVsExpense(userId: string, period: Periodicity = P
     let expense = 0;
 
     for (const tx of transactions) {
-        const amountInBase = await convertCurrencyFromDB(tx.amount, tx.currency, user.baseCurrency);
+        const amountInBase = await convertCurrencyFromDBHistorical(tx.amount, tx.currency, user.baseCurrency, tx.date);
 
         if (tx.type === TransactionType.INCOME) {
             income += amountInBase;
@@ -196,7 +198,11 @@ export async function getCategoryBreakdown(userId: string, startDate?: string, e
 
     const now = new Date();
     const from = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = endDate ? new Date(endDate) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const to = endDate ? new Date(endDate) : (() => {
+        const date = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        date.setUTCHours(23, 59, 59, 999);
+        return date;
+    })();
 
     const transactions = await prisma.transaction.findMany({
         where: {
@@ -209,7 +215,7 @@ export async function getCategoryBreakdown(userId: string, startDate?: string, e
     const breakdownMap = new Map<string, number>();
 
     for (const txn of transactions) {
-        const converted = await convertCurrencyFromDB(txn.amount, txn.currency, user.baseCurrency);
+        const converted = await convertCurrencyFromDBHistorical(txn.amount, txn.currency, user.baseCurrency, txn.date);
         breakdownMap.set(
             txn.category,
             (breakdownMap.get(txn.category) || 0) + converted
@@ -241,8 +247,14 @@ export async function getAssetAllocation(userId: string, groupBy: 'assetType' | 
     const allocationMap = new Map<string, number>();
 
     for (const holding of holdings) {
-        const totalValue = holding.lastPrice * holding.quantity;
-        const convertedValue = await convertCurrencyFromDB(totalValue, holding.holdingCurrency, user.baseCurrency);
+        // Use pre-calculated convertedValue if available, otherwise calculate on the fly
+        let convertedValue = holding.convertedValue;
+
+        // If convertedValue is 0 or missing, calculate it
+        if (!convertedValue || convertedValue === 0) {
+            const totalValue = holding.lastPrice * holding.quantity;
+            convertedValue = await convertCurrencyFromDB(totalValue, holding.holdingCurrency, user.baseCurrency);
+        }
 
         const key = holding[groupBy];
         allocationMap.set(key, (allocationMap.get(key) || 0) + convertedValue);
@@ -294,16 +306,16 @@ export async function getBudgetVsActual(userId: string, period: Periodicity = Pe
 
     const actualsMap = new Map<string, number>();
 
-    const addAmount = async (category: string, amount: number, currency: string) => {
-        const converted = await convertCurrencyFromDB(amount, currency, user.baseCurrency);
+    const addAmount = async (category: string, amount: number, currency: string, date: Date) => {
+        const converted = await convertCurrencyFromDBHistorical(amount, currency, user.baseCurrency, date);
         actualsMap.set(category, (actualsMap.get(category) || 0) + converted);
     };
 
     for (const txn of transactions) {
-        await addAmount(txn.category, txn.amount, txn.currency);
+        await addAmount(txn.category, txn.amount, txn.currency, txn.date);
     }
     for (const pe of plannedEvents) {
-        await addAmount(pe.category, pe.estimatedCost, pe.currency);
+        await addAmount(pe.category, pe.estimatedCost, pe.currency, pe.targetDate);
     }
 
     const result = budgets.map(budget => ({

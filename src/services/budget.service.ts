@@ -1,9 +1,9 @@
 import prisma from "../utils/db";
-import { Category, Periodicity, TransactionType } from "@prisma/client";
+import { TransactionType } from "@prisma/client";
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { CreateBudgetInput, BudgetUpdateData } from '../types/service_types';
 import { getPeriodDates } from "../utils/date";
-import { getTotalConverted } from "../utils/currency";
+import { getTotalConverted, getTotalConvertedHistorical } from "../utils/currency";
 
 export const createNewBudget = async (userId: string, data: CreateBudgetInput) => {
     // Validation
@@ -115,10 +115,10 @@ export const getUserBudgetPerformance = async (userId: string) => {
                     }),
                 ]);
 
-                const totalSpent = await getTotalConverted(
+                const totalSpent = await getTotalConvertedHistorical(
                     [
-                        ...transactions.map(t => ({ amount: t.amount, currency: t.currency })),
-                        ...plannedEvents.map(pe => ({ amount: pe.estimatedCost, currency: pe.currency })),
+                        ...transactions.map(t => ({ amount: t.amount, currency: t.currency, date: t.date })),
+                        ...plannedEvents.map(pe => ({ amount: pe.estimatedCost, currency: pe.currency, date: pe.targetDate })),
                     ],
                     user.baseCurrency
                 );

@@ -241,7 +241,64 @@ router.delete('/:id', deleteResource);
 export default router;
 ```
 
-### **Pattern 4: Error Handling**
+### **Pattern 4: Decimal Type Handling** ✨ **NEW**
+Consistent patterns for handling Decimal types in financial calculations:
+
+```typescript
+import { Prisma } from '@prisma/client';
+import { toNumber, addDecimal, multiplyDecimal, subtractDecimal, divideDecimal, compareDecimal } from '../utils/utils';
+
+// Service pattern for handling Decimal inputs
+export const calculateGoalProgress = async (goalId: string, userId: string) => {
+    const goal = await prisma.goal.findUnique({
+        where: { id_userId: { id: goalId, userId } }
+    });
+
+    if (!goal) {
+        throw new Error('Goal not found');
+    }
+
+    // Convert Decimal to number for calculations
+    const savedAmount = toNumber(goal.savedAmount);
+    const targetAmount = toNumber(goal.targetAmount);
+    
+    // Perform calculation
+    const progress = Math.min(100, (savedAmount / targetAmount) * 100);
+    
+    return { progress };
+};
+
+// Currency conversion with Decimal support
+export const convertAmount = async (
+    amount: number | Prisma.Decimal,
+    fromCurrency: string,
+    toCurrency: string
+) => {
+    // Handle both number and Decimal inputs
+    const numericAmount = typeof amount === 'number' ? amount : amount.toNumber();
+    
+    // Use conversion utilities that handle Decimal types
+    return await convertCurrencyFromDB(numericAmount, fromCurrency, toCurrency);
+};
+
+// Arithmetic operations with Decimal types
+export const calculateBudgetVariance = (
+    budgetAmount: number | Prisma.Decimal,
+    actualSpent: number | Prisma.Decimal
+) => {
+    // Use utility functions for safe arithmetic
+    const variance = subtractDecimal(budgetAmount, actualSpent);
+    const percentageUsed = divideDecimal(actualSpent, budgetAmount) * 100;
+    
+    return {
+        variance,
+        percentageUsed,
+        isOverBudget: compareDecimal(actualSpent, budgetAmount) > 0
+    };
+};
+```
+
+### **Pattern 5: Error Handling**
 Consistent error handling across all services:
 
 ```typescript
@@ -334,6 +391,69 @@ import { createGoal as createGoalService } from '../services/goal.service';
 - Easy to add new endpoints following existing patterns
 - Reusable service functions
 
+## 🔢 Decimal Type Best Practices ✨ **NEW**
+
+### **Working with Financial Data**
+Always use proper Decimal handling for financial calculations:
+
+```typescript
+// ✅ GOOD: Use utility functions
+import { toNumber, addDecimal, compareDecimal } from '../utils/utils';
+
+const totalAmount = addDecimal(amount1, amount2);
+const isPositive = compareDecimal(amount, 0) > 0;
+
+// ❌ BAD: Direct arithmetic operations
+const total = amount1 + amount2; // Type error with Decimal
+const isPositive = amount > 0;   // Type error with Decimal
+```
+
+### **Type Definitions for Decimal Fields**
+When defining service interfaces, specify both number and Decimal support:
+
+```typescript
+// ✅ GOOD: Support both types
+export interface CreateTransactionInput {
+    amount: number | Decimal;
+    currency: string;
+}
+
+// Currency conversion functions
+export async function convertCurrencyFromDB(
+    value: number | Decimal,  // Accept both types
+    from: string,
+    to: string
+): Promise<number> {  // Always return number for calculations
+    // Implementation handles both input types
+}
+```
+
+### **Database Operations with Decimal**
+When working with Prisma and Decimal fields:
+
+```typescript
+// ✅ GOOD: Convert Decimal to number for business logic
+const transaction = await prisma.transaction.findUnique({...});
+const amount = toNumber(transaction.amount);
+
+// Perform calculations with numbers
+const fee = amount * 0.02;
+const total = amount + fee;
+
+// ✅ GOOD: Accept Decimal in service parameters
+export const updateTransactionAmount = async (
+    transactionId: string,
+    newAmount: number | Decimal
+) => {
+    return await prisma.transaction.update({
+        where: { id: transactionId },
+        data: { 
+            amount: newAmount  // Prisma handles conversion
+        }
+    });
+};
+```
+
 ## ✅ Quality Checklist
 
 When implementing new features, ensure:
@@ -343,7 +463,10 @@ When implementing new features, ensure:
 - [ ] **Services**: Use typed inputs, structured validation, error handling wrappers
 - [ ] **Types**: Define separate Create/Update interfaces
 - [ ] **Errors**: Use `ValidationError` for business logic, `withPrismaErrorHandling` for DB ops
+- [ ] **Decimal Types**: Use utility functions for arithmetic, accept both number and Decimal in services ✨ **NEW**
+- [ ] **Financial Calculations**: Convert Decimal to number for math operations, return numbers for business logic ✨ **NEW**
+- [ ] **Currency Conversion**: Use enhanced conversion functions that support Decimal inputs ✨ **NEW**
 - [ ] **Naming**: Follow established conventions
 - [ ] **Imports**: Organize in standard order
 
-This guide ensures that all code follows the same high-quality patterns established throughout the Azerro backend codebase.
+This guide ensures that all code follows the same high-quality patterns established throughout the Azerro backend codebase, including proper handling of the new Decimal types for financial precision.

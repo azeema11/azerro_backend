@@ -10,9 +10,9 @@ generator client {
 /// Represents different assistant modules available in the platform
 model Assistant {
   id          String          @id @default(uuid())
-  name        String          @unique // e.g. "finance", "health", etc.
-  displayName String // e.g. "Personal Finance", "Health Tracker"
-  description String?
+  name        String          @unique @db.VarChar(50) // e.g. "finance", "health", etc.
+  displayName String          @db.VarChar(100) // e.g. "Personal Finance", "Health Tracker"
+  description String?         @db.VarChar(500)
   createdAt   DateTime        @default(now())
   users       UserAssistant[]
 }
@@ -32,9 +32,9 @@ model UserAssistant {
 
 model User {
   id            String          @id @default(uuid())
-  name          String
-  email         String          @unique
-  passwordHash  String
+  name          String          @db.VarChar(100)
+  email         String          @unique @db.VarChar(255)
+  passwordHash  String          @db.VarChar(255)
   createdAt     DateTime        @default(now())
   transactions  Transaction[]
   holdings      Holding[]
@@ -42,9 +42,9 @@ model User {
   plannedEvents PlannedEvent[]
   budgets       Budget[]
   assistants    UserAssistant[]
-  monthlyIncome Float?
+  monthlyIncome Decimal?        @db.Decimal(15, 2)
 
-  baseCurrency String @default("INR") // User’s preferred reporting currency
+  baseCurrency String @default("INR") @db.VarChar(3) // User's preferred reporting currency
   Goal         Goal[]
 }
 
@@ -53,18 +53,18 @@ model Holding {
   user   User   @relation(fields: [userId], references: [id])
   userId String
 
-  platform  String // e.g., Zerodha, Binance, Robinhood
-  ticker    String // e.g., INFY.NS, AAPL, BTC
+  platform  String    @db.VarChar(50) // e.g., Zerodha, Binance, Robinhood
+  ticker    String    @db.VarChar(20) // e.g., INFY.NS, AAPL, BTC
   assetType AssetType // STOCK, CRYPTO, METAL
-  name      String
+  name      String    @db.VarChar(100)
 
-  quantity        Float
-  avgCost         Float // In holdingCurrency
-  holdingCurrency String // e.g., INR, USD, USDT
-  lastPrice       Float    @default(0) // Also in holdingCurrency
+  quantity        Decimal  @db.Decimal(20, 8) // High precision for crypto
+  avgCost         Decimal  @db.Decimal(15, 4) // In holdingCurrency
+  holdingCurrency String   @db.VarChar(3) // e.g., INR, USD, USDT
+  lastPrice       Decimal  @default(0) @db.Decimal(15, 4) // Also in holdingCurrency
   lastChecked     DateTime @updatedAt
 
-  convertedValue Float @default(0) // Calculated value in baseCurrency
+  convertedValue Decimal @default(0) @db.Decimal(15, 2) // Calculated value in baseCurrency
 
   @@unique([id, userId])
   @@index([userId])
@@ -77,11 +77,11 @@ model Transaction {
   id          String          @id @default(uuid())
   user        User            @relation(fields: [userId], references: [id])
   userId      String
-  amount      Float
-  currency    String
+  amount      Decimal         @db.Decimal(15, 2)
+  currency    String          @db.VarChar(3)
   category    Category
   type        TransactionType @default(EXPENSE)
-  description String?
+  description String?         @db.VarChar(500)
   date        DateTime
 
   bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
@@ -101,10 +101,10 @@ model BankAccount {
   id        String      @id @default(uuid())
   user      User        @relation(fields: [userId], references: [id])
   userId    String
-  name      String
+  name      String      @db.VarChar(100)
   type      AccountType
-  balance   Float
-  currency  String
+  balance   Decimal     @db.Decimal(15, 2)
+  currency  String      @db.VarChar(3)
   createdAt DateTime    @default(now())
 
   transactions Transaction[]
@@ -118,11 +118,11 @@ model PlannedEvent {
   id            String      @id @default(uuid())
   user          User        @relation(fields: [userId], references: [id])
   userId        String
-  name          String
+  name          String      @db.VarChar(200)
   targetDate    DateTime
-  estimatedCost Float
-  savedSoFar    Float       @default(0)
-  currency      String // e.g., INR, USD
+  estimatedCost Decimal     @db.Decimal(15, 2)
+  savedSoFar    Decimal     @default(0) @db.Decimal(15, 2)
+  currency      String      @db.VarChar(3) // e.g., INR, USD
   category      Category
   recurrence    Periodicity @default(ONE_TIME)
   createdAt     DateTime    @default(now())
@@ -144,7 +144,7 @@ model Budget {
   user      User        @relation(fields: [userId], references: [id])
   userId    String
   category  Category
-  amount    Float // budget amount per period
+  amount    Decimal     @db.Decimal(15, 2) // budget amount per period
   period    Periodicity // WEEKLY, MONTHLY, ANNUAL
   createdAt DateTime    @default(now())
 
@@ -195,12 +195,25 @@ enum Periodicity {
 
 model CurrencyRate {
   id        String   @id @default(uuid())
-  base      String // e.g., USD
-  target    String // e.g., INR
-  rate      Float
+  base      String   @db.VarChar(3) // e.g., USD
+  target    String   @db.VarChar(3) // e.g., INR
+  rate      Decimal  @db.Decimal(18, 8) // High precision for exchange rates
   updatedAt DateTime @updatedAt
 
   @@unique([base, target])
+}
+
+model CurrencyRateHistory {
+  id         String   @id @default(uuid())
+  base       String   @db.VarChar(3) // e.g., USD
+  target     String   @db.VarChar(3) // e.g., INR
+  rate       Decimal  @db.Decimal(18, 8) // High precision for exchange rates
+  rateDate   DateTime // The date this rate was valid for
+  createdAt  DateTime @default(now())
+
+  @@unique([base, target, rateDate])
+  @@index([base, target])
+  @@index([rateDate])
 }
 
 model Goal {
@@ -208,11 +221,11 @@ model Goal {
   user   User   @relation(fields: [userId], references: [id])
   userId String
 
-  name         String
-  description  String?
-  targetAmount Float
-  savedAmount  Float    @default(0)
-  currency     String // e.g., INR, USD
+  name         String   @db.VarChar(200)
+  description  String?  @db.VarChar(1000)
+  targetAmount Decimal  @db.Decimal(15, 2)
+  savedAmount  Decimal  @default(0) @db.Decimal(15, 2)
+  currency     String   @db.VarChar(3) // e.g., INR, USD
   targetDate   DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

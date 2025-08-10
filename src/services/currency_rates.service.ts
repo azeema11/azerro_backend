@@ -13,14 +13,21 @@ export async function updateCurrencyRates(base = 'USD') {
 
         if (!res.data || !res.data.rates) {
             console.error('Invalid API response structure');
-            await addFallbackRates();
-            return;
+            return await usePreviousDayRates(base);
         }
 
         const rates = res.data.rates;
         console.log(`Found ${Object.keys(rates).length} exchange rates`);
 
-        const operations = Object.entries(rates).map(([target, rate]) =>
+        // Get today's date for historical record
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0); // Set to UTC midnight for consistency
+
+        // Add the base currency to itself (e.g., USD to USD = 1.0)
+        const completeRates = { [base]: 1.0, ...rates };
+
+        // Save to both current rates and historical rates
+        const currentRateOps = Object.entries(completeRates).map(([target, rate]) =>
             prisma.currencyRate.upsert({
                 where: {
                     base_target: {
@@ -37,51 +44,117 @@ export async function updateCurrencyRates(base = 'USD') {
             })
         );
 
-        await Promise.all(operations);
-        console.log(`✅ Currency rates updated successfully for base ${base}`);
-        return true;
-    } catch (err) {
-        console.error(`❌ Failed to fetch currency rates:`, err);
-        await addFallbackRates();
-        return false;
-    }
-}
-
-async function addFallbackRates() {
-    try {
-        console.log('Adding fallback currency rates...');
-        const fallbackRates = {
-            'INR': 83.12,
-            'EUR': 0.85,
-            'GBP': 0.73,
-            'JPY': 110.0,
-            'CAD': 1.25,
-            'AUD': 1.35,
-            'CHF': 0.88,
-            'CNY': 6.45
-        };
-
-        const fallbackOps = Object.entries(fallbackRates).map(([target, rate]) =>
-            prisma.currencyRate.upsert({
+        const historicalRateOps = Object.entries(completeRates).map(([target, rate]) =>
+            prisma.currencyRateHistory.upsert({
                 where: {
-                    base_target: {
-                        base: 'USD',
+                    base_target_rateDate: {
+                        base,
                         target,
+                        rateDate: today,
                     },
                 },
                 update: { rate },
                 create: {
-                    base: 'USD',
+                    base,
                     target,
                     rate,
+                    rateDate: today,
                 },
             })
         );
 
-        await Promise.all(fallbackOps);
-        console.log('✅ Fallback currency rates added');
+        await prisma.$transaction([...currentRateOps, ...historicalRateOps]);
+        console.log(`✅ Currency rates updated successfully for base ${base} (current + historical)`);
+        return true;
     } catch (err) {
-        console.error(`❌ Failed to add fallback currency rates:`, err);
+        console.error(`❌ Failed to fetch currency rates:`, err);
+        return await usePreviousDayRates(base);
+    }
+}
+
+/**
+ * Use previous day's rates when current day's API fetch fails
+ * Copies the most recent historical rates to today's date
+ */
+async function usePreviousDayRates(base = 'USD') {
+    try {
+        console.log(`Using previous day's rates for base: ${base}...`);
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+
+
+        // Find the most recent date before today that has rates
+        const mostRecentRateDate = await prisma.currencyRateHistory.findFirst({
+            where: {
+                base,
+                rateDate: { lt: today },
+            },
+            orderBy: { rateDate: 'desc' },
+            select: { rateDate: true },
+        });
+
+        if (!mostRecentRateDate) {
+            throw new Error(`No previous rates found for base ${base}`);
+        }
+
+        // Get all rates from the most recent date
+        const previousRates = await prisma.currencyRateHistory.findMany({
+            where: {
+                base,
+                rateDate: mostRecentRateDate.rateDate,
+            },
+        });
+
+        if (previousRates.length === 0) {
+            throw new Error(`No rates found for previous date ${mostRecentRateDate.rateDate}`);
+        }
+
+        // Copy previous rates to both current and today's historical records
+        const currentRateOps = previousRates.map(prevRate =>
+            prisma.currencyRate.upsert({
+                where: {
+                    base_target: {
+                        base: prevRate.base,
+                        target: prevRate.target,
+                    },
+                },
+                update: { rate: prevRate.rate },
+                create: {
+                    base: prevRate.base,
+                    target: prevRate.target,
+                    rate: prevRate.rate,
+                },
+            })
+        );
+
+        const historicalRateOps = previousRates.map(prevRate =>
+            prisma.currencyRateHistory.upsert({
+                where: {
+                    base_target_rateDate: {
+                        base: prevRate.base,
+                        target: prevRate.target,
+                        rateDate: today,
+                    },
+                },
+                update: { rate: prevRate.rate },
+                create: {
+                    base: prevRate.base,
+                    target: prevRate.target,
+                    rate: prevRate.rate,
+                    rateDate: today,
+                },
+            })
+        );
+
+        await prisma.$transaction([...currentRateOps, ...historicalRateOps]);
+
+        console.log(`✅ Used previous day's rates (${previousRates.length} rates) from ${mostRecentRateDate.rateDate.toISOString().split('T')[0]} for base ${base}`);
+        return true;
+    } catch (err) {
+        console.error(`❌ Failed to use previous day's rates for base ${base}:`, err);
+        return false;
     }
 }
 
@@ -90,11 +163,70 @@ export async function ensureCurrencyRatesExist() {
         const count = await prisma.currencyRate.count();
         if (count === 0) {
             console.log('No currency rates found, fetching initial rates...');
-            await updateCurrencyRates('USD');
+            const success = await updateCurrencyRates('USD');
+            if (!success) {
+                throw new Error('Failed to fetch initial currency rates and no existing rates available');
+            }
         } else {
             console.log(`Found ${count} existing currency rates`);
         }
     } catch (err) {
         console.error(`❌ Failed to ensure currency rates exist:`, err);
+        throw err; // Re-throw to indicate critical failure
+    }
+}
+
+/**
+ * Get historical exchange rate for a specific date
+ * Falls back to closest previous available date if exact date not found
+ * Throws error if no rate is available (ensures data integrity)
+ */
+export async function getHistoricalExchangeRate(
+    from: string,
+    to: string,
+    date: Date
+): Promise<number> {
+    try {
+        if (from === to) return 1.0;
+
+        // Normalize date to UTC midnight
+        const targetDate = new Date(date);
+        targetDate.setUTCHours(0, 0, 0, 0);
+
+        // Try to find exact date first
+        let rateRecord = await prisma.currencyRateHistory.findUnique({
+            where: {
+                base_target_rateDate: {
+                    base: from,
+                    target: to,
+                    rateDate: targetDate,
+                },
+            },
+        });
+
+        // If exact date not found, try to find the closest previous date
+        if (!rateRecord) {
+            rateRecord = await prisma.currencyRateHistory.findFirst({
+                where: {
+                    base: from,
+                    target: to,
+                    rateDate: { lte: targetDate },
+                },
+                orderBy: { rateDate: 'desc' },
+            });
+        }
+
+        // If still no historical rate found, this indicates a data integrity issue
+        if (!rateRecord) {
+            throw new Error(
+                `No historical exchange rate found for ${from} to ${to} on or before ${targetDate.toISOString().split('T')[0]}. ` +
+                `This indicates missing currency rate data that should be populated during deployment.`
+            );
+        }
+
+        return typeof rateRecord.rate === 'number' ? rateRecord.rate : rateRecord.rate.toNumber();
+    } catch (error) {
+        console.error(`Error getting historical exchange rate from ${from} to ${to} for ${date}:`, error);
+        throw error; // Re-throw to maintain error context
     }
 }
