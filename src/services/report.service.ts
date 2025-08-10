@@ -13,8 +13,13 @@ export async function getExpenseSummary(userId: string, start?: string, end?: st
         throw new Error('Invalid end date format');
     }
 
-    const startDate = start ? new Date(start) : new Date("2000-01-01");
-    const endDate = end ? new Date(end) : new Date();
+    const now = new Date();
+    const startDate = start ? new Date(start) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = end ? new Date(end) : (() => {
+        const date = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        date.setUTCHours(23, 59, 59, 999);
+        return date;
+    })();
 
     // Get user's base currency
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -67,8 +72,13 @@ export async function getIncomeSummary(userId: string, start?: string, end?: str
         throw new Error('Invalid end date format');
     }
 
-    const startDate = start ? new Date(start) : new Date("2000-01-01");
-    const endDate = end ? new Date(end) : new Date();
+    const now = new Date();
+    const startDate = start ? new Date(start) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = end ? new Date(end) : (() => {
+        const date = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        date.setUTCHours(23, 59, 59, 999);
+        return date;
+    })();
 
     // Get user's base currency
     const user = await prisma.user.findUnique({ where: { id: userId } });
