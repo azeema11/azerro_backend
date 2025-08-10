@@ -1,8 +1,4 @@
 import { Client } from 'pg';
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
 
 /**
  * Perform database maintenance operations to reclaim space and optimize performance

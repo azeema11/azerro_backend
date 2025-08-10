@@ -3,6 +3,7 @@ import prisma from "../utils/db";
 import { convertCurrencyFromDB } from "../utils/currency";
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { GoalUpdateData, CreateGoalInput } from '../types/service_types';
+import { toNumberSafe, subtractDecimal } from '../utils/utils';
 
 export const getGoals = async (userId: string) => {
     return withPrismaErrorHandling(async () => {
@@ -12,7 +13,9 @@ export const getGoals = async (userId: string) => {
 
         const goalsWithProgress = goals.map(goal => ({
             ...goal,
-            progress: Math.min(100, (goal.savedAmount / goal.targetAmount) * 100)
+            progress: toNumberSafe(goal.targetAmount) === 0
+                ? 0
+                : Math.min(100, (toNumberSafe(goal.savedAmount) / toNumberSafe(goal.targetAmount)) * 100)
         }));
 
         return goalsWithProgress;
@@ -128,7 +131,8 @@ export const getGoalById = async (id: string, userId: string) => {
         throw new Error('Goal not found');
     }
 
-    const progress = Math.min(100, (goal.savedAmount / goal.targetAmount) * 100);
+    const targetAmount = toNumberSafe(goal.targetAmount);
+    const progress = targetAmount === 0 ? 0 : Math.min(100, (toNumberSafe(goal.savedAmount) / targetAmount) * 100);
     return { ...goal, progress };
 };
 
@@ -174,7 +178,8 @@ export const contributeToGoal = async (id: string, userId: string, amount: numbe
             }
         });
 
-        const progress = Math.min(100, (goal.savedAmount / goal.targetAmount) * 100);
+        const targetAmount = toNumberSafe(goal.targetAmount);
+        const progress = targetAmount === 0 ? 0 : Math.min(100, (toNumberSafe(goal.savedAmount) / targetAmount) * 100);
         return { ...goal, progress };
     }, 'Goal');
 };
@@ -199,7 +204,7 @@ export async function checkGoalConflicts(userId: string) {
         // --- Goals ---
         for (const g of goals) {
             const monthsLeft = monthsBetween(now, g.targetDate);
-            const amountLeft = g.targetAmount - g.savedAmount;
+            const amountLeft = toNumberSafe(subtractDecimal(g.targetAmount, g.savedAmount));
             const perMonthInGoalCurrency = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
 
             // Convert to user's base currency
@@ -227,12 +232,12 @@ export async function checkGoalConflicts(userId: string) {
 
             if (e.recurrence === "ONE_TIME") {
                 const monthsLeft = monthsBetween(now, e.targetDate);
-                const amountLeft = e.estimatedCost - e.savedSoFar;
+                const amountLeft = toNumberSafe(subtractDecimal(e.estimatedCost, e.savedSoFar));
                 perMonthInEventCurrency = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
             } else {
                 // Recurring → convert to monthly equivalent
                 const factor = recurrenceToMonthlyFactor(e.recurrence);
-                perMonthInEventCurrency = e.estimatedCost * factor;
+                perMonthInEventCurrency = toNumberSafe(e.estimatedCost) * factor;
             }
 
             // Convert to user's base currency
@@ -254,13 +259,15 @@ export async function checkGoalConflicts(userId: string) {
             });
         }
 
-        const conflict = totalRequired > (user?.monthlyIncome ?? 0);
+        const conflict = totalRequired > toNumberSafe(user?.monthlyIncome ?? 0);
+        const difference = totalRequired - toNumberSafe(user?.monthlyIncome ?? 0);
 
         return {
             conflict,
             totalRequiredPerMonth: parseFloat(totalRequired.toFixed(2)),
             availableMonthlyIncome: user?.monthlyIncome ?? 0,
-            overBudgetBy: parseFloat((totalRequired - (user?.monthlyIncome ?? 0)).toFixed(2)),
+            overBudgetBy: difference > 0 ? parseFloat(difference.toFixed(2)) : null,
+            belowBudgetBy: difference < 0 ? parseFloat(Math.abs(difference).toFixed(2)) : null,
             currency: user.baseCurrency,
             breakdown: detailed
         };

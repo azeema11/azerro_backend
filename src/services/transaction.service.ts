@@ -1,5 +1,5 @@
 import prisma from '../utils/db';
-import { Category, TransactionType } from '@prisma/client';
+import { TransactionType } from '@prisma/client';
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { TransactionUpdateData, CreateTransactionInput } from '../types/service_types';
 

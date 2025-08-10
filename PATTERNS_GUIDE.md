@@ -246,7 +246,7 @@ Consistent patterns for handling Decimal types in financial calculations:
 
 ```typescript
 import { Prisma } from '@prisma/client';
-import { toNumber, addDecimal, multiplyDecimal, subtractDecimal, divideDecimal, compareDecimal } from '../utils/utils';
+import { toNumberSafe, addDecimal, multiplyDecimal, subtractDecimal, divideDecimal, compareDecimal } from '../utils/utils';
 
 // Service pattern for handling Decimal inputs
 export const calculateGoalProgress = async (goalId: string, userId: string) => {
@@ -259,8 +259,8 @@ export const calculateGoalProgress = async (goalId: string, userId: string) => {
     }
 
     // Convert Decimal to number for calculations
-    const savedAmount = toNumber(goal.savedAmount);
-    const targetAmount = toNumber(goal.targetAmount);
+    const savedAmount = toNumberSafe(goal.savedAmount);
+    const targetAmount = toNumberSafe(goal.targetAmount);
     
     // Perform calculation
     const progress = Math.min(100, (savedAmount / targetAmount) * 100);
@@ -275,7 +275,7 @@ export const convertAmount = async (
     toCurrency: string
 ) => {
     // Handle both number and Decimal inputs
-    const numericAmount = typeof amount === 'number' ? amount : amount.toNumber();
+    const numericAmount = typeof amount === 'number' ? amount : toNumberSafe(amount);
     
     // Use conversion utilities that handle Decimal types
     return await convertCurrencyFromDB(numericAmount, fromCurrency, toCurrency);
@@ -398,7 +398,7 @@ Always use proper Decimal handling for financial calculations:
 
 ```typescript
 // ✅ GOOD: Use utility functions
-import { toNumber, addDecimal, compareDecimal } from '../utils/utils';
+import { toNumberSafe, addDecimal, compareDecimal } from '../utils/utils';
 
 const totalAmount = addDecimal(amount1, amount2);
 const isPositive = compareDecimal(amount, 0) > 0;
@@ -434,7 +434,7 @@ When working with Prisma and Decimal fields:
 ```typescript
 // ✅ GOOD: Convert Decimal to number for business logic
 const transaction = await prisma.transaction.findUnique({...});
-const amount = toNumber(transaction.amount);
+const amount = toNumberSafe(transaction.amount);
 
 // Perform calculations with numbers
 const fee = amount * 0.02;

@@ -3,7 +3,8 @@ import { TransactionType } from "@prisma/client";
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { CreateBudgetInput, BudgetUpdateData } from '../types/service_types';
 import { getPeriodDates } from "../utils/date";
-import { getTotalConverted, getTotalConvertedHistorical } from "../utils/currency";
+import { getTotalConvertedHistorical } from "../utils/currency";
+import { toNumberSafe } from "../utils/utils";
 
 export const createNewBudget = async (userId: string, data: CreateBudgetInput) => {
     // Validation
@@ -129,7 +130,7 @@ export const getUserBudgetPerformance = async (userId: string) => {
                     budgetAmount,
                     actualSpending: totalSpent,
                     currency: user.baseCurrency,
-                    withinBudget: totalSpent <= budgetAmount,
+                    withinBudget: totalSpent <= toNumberSafe(budgetAmount),
                 };
             })
         );

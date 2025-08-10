@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { asyncHandler } from '../utils/async_handler';
 import { CreateTransactionInput, TransactionUpdateData } from '../types/service_types';

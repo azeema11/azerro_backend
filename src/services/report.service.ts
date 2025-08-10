@@ -2,7 +2,7 @@ import { TransactionType, Periodicity } from "@prisma/client";
 import prisma from "../utils/db";
 import { convertCurrencyFromDB, convertCurrencyFromDBHistorical } from "../utils/currency";
 import { daysBetween, detectFrequency, getPeriodDates } from "../utils/date";
-import { groupBy } from "../utils/utils";
+import { groupBy, toNumberSafe } from "../utils/utils";
 
 export async function getExpenseSummary(userId: string, start?: string, end?: string) {
     // Validate date strings if provided
@@ -248,16 +248,16 @@ export async function getAssetAllocation(userId: string, groupBy: 'assetType' | 
 
     for (const holding of holdings) {
         // Use pre-calculated convertedValue if available, otherwise calculate on the fly
-        let convertedValue = holding.convertedValue;
+        let convertedValueNumber = toNumberSafe(holding.convertedValue || 0);
 
         // If convertedValue is 0 or missing, calculate it
-        if (!convertedValue || convertedValue === 0) {
-            const totalValue = holding.lastPrice * holding.quantity;
-            convertedValue = await convertCurrencyFromDB(totalValue, holding.holdingCurrency, user.baseCurrency);
+        if (convertedValueNumber === 0) {
+            const totalValue = toNumberSafe(holding.lastPrice) * toNumberSafe(holding.quantity);
+            convertedValueNumber = await convertCurrencyFromDB(totalValue, holding.holdingCurrency, user.baseCurrency);
         }
 
         const key = holding[groupBy];
-        allocationMap.set(key, (allocationMap.get(key) || 0) + convertedValue);
+        allocationMap.set(key, (allocationMap.get(key) || 0) + convertedValueNumber);
     }
 
     const breakdown = Array.from(allocationMap.entries()).map(([group, value]) => ({
@@ -312,10 +312,10 @@ export async function getBudgetVsActual(userId: string, period: Periodicity = Pe
     };
 
     for (const txn of transactions) {
-        await addAmount(txn.category, txn.amount, txn.currency, txn.date);
+        await addAmount(txn.category, toNumberSafe(txn.amount), txn.currency, txn.date);
     }
     for (const pe of plannedEvents) {
-        await addAmount(pe.category, pe.estimatedCost, pe.currency, pe.targetDate);
+        await addAmount(pe.category, toNumberSafe(pe.estimatedCost), pe.currency, pe.targetDate);
     }
 
     const result = budgets.map(budget => ({
@@ -340,9 +340,9 @@ export async function getGoalProgressReport(userId: string) {
     const today = new Date();
 
     return goals.map((goal) => {
-        const progress = goal.targetAmount === 0
+        const progress = toNumberSafe(goal.targetAmount) === 0
             ? 0
-            : Math.min((goal.savedAmount / goal.targetAmount) * 100, 100);
+            : Math.min((toNumberSafe(goal.savedAmount) / toNumberSafe(goal.targetAmount)) * 100, 100);
 
         const daysLeft = daysBetween(today, goal.targetDate);
 

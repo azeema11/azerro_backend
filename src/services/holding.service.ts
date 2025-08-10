@@ -1,6 +1,5 @@
 import prisma from '../utils/db';
 import { convertCurrencyFromDB } from '../utils/currency';
-import { AssetType } from '@prisma/client';
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { HoldingUpdateData, CreateHoldingInput } from '../types/service_types';
 import axios from 'axios';

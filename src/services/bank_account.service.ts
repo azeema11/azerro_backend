@@ -1,4 +1,3 @@
-import { AccountType } from '@prisma/client';
 import prisma from '../utils/db';
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { BankAccountUpdateData, CreateBankAccountInput } from '../types/service_types';
