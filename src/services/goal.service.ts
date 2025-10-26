@@ -4,6 +4,7 @@ import { convertCurrencyFromDB } from "../utils/currency";
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { GoalUpdateData, CreateGoalInput } from '../types/service_types';
 import { toNumberSafe, subtractDecimal } from '../utils/utils';
+import { callOllama } from '../utils/ollama';
 
 export const getGoals = async (userId: string) => {
     return withPrismaErrorHandling(async () => {
@@ -222,7 +223,8 @@ export async function checkGoalConflicts(userId: string) {
                 name: g.name,
                 perMonth: parseFloat(perMonth.toFixed(2)),
                 monthsLeft,
-                originalCurrency: g.currency
+                originalCurrency: g.currency,
+                targetDate: g.targetDate,
             });
         }
 
@@ -255,7 +257,8 @@ export async function checkGoalConflicts(userId: string) {
                 name: e.name,
                 perMonth: parseFloat(perMonth.toFixed(2)),
                 recurrence: e.recurrence,
-                originalCurrency: e.currency
+                originalCurrency: e.currency,
+                targetDate: e.targetDate,
             });
         }
 
@@ -269,7 +272,7 @@ export async function checkGoalConflicts(userId: string) {
             overBudgetBy: difference > 0 ? parseFloat(difference.toFixed(2)) : null,
             belowBudgetBy: difference < 0 ? parseFloat(Math.abs(difference).toFixed(2)) : null,
             currency: user.baseCurrency,
-            breakdown: detailed
+            breakdown: detailed,
         };
     } catch (error) {
         console.error("Error in checkGoalConflicts:", error);

@@ -17,6 +17,7 @@ import { scheduleDatabaseMaintenance } from './jobs/database_maintenance.job';
 import reportsRouter from './routes/report.routes';
 import budgetRouter from './routes/budget.route';
 import plannedEventRouter from './routes/planned_event.route';
+import aiRouter from './routes/ai.route';
 import {
     globalErrorHandler,
     notFoundHandler,
@@ -73,6 +74,7 @@ app.use('/goals', authMiddleware, goalRouter);
 app.use("/reports", authMiddleware, reportsRouter);
 app.use("/budgets", authMiddleware, budgetRouter);
 app.use("/planned-events", authMiddleware, plannedEventRouter);
+app.use("/ai", authMiddleware, aiRouter);
 
 // 8. Final error handling middleware (order is important!)
 app.use('*', notFoundHandler);       // Handle 404 errors for undefined routes
