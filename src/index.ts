@@ -17,7 +17,7 @@ import { scheduleDatabaseMaintenance } from './jobs/database_maintenance.job';
 import reportsRouter from './routes/report.routes';
 import budgetRouter from './routes/budget.route';
 import plannedEventRouter from './routes/planned_event.route';
-import aiRouter from './routes/ai.route';
+import aiRouter from './ai/routes/ai.route';
 import {
     globalErrorHandler,
     notFoundHandler,

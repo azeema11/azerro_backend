@@ -44,8 +44,8 @@ model User {
   assistants    UserAssistant[]
   monthlyIncome Decimal?        @db.Decimal(15, 2)
 
-  baseCurrency String @default("INR") @db.VarChar(3) // User's preferred reporting currency
-  Goal         Goal[]
+  baseCurrency  String @default("INR") @db.VarChar(3) // User's preferred reporting currency
+  goals         Goal[]
 }
 
 model Holding {

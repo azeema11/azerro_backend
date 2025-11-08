@@ -6,7 +6,7 @@ export async function callOllama(prompt: string): Promise<string> {
         const response = await fetch(process.env.OLLAMA_MODEL_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: "llama3.1:8b", prompt, stream: false }),
+            body: JSON.stringify({ model: "llama3.1:8b", prompt, stream: false, temperature: 0 }),
         });
         const data = await response.json();
         return data.response.trim();

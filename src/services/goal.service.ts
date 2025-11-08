@@ -4,7 +4,6 @@ import { convertCurrencyFromDB } from "../utils/currency";
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { GoalUpdateData, CreateGoalInput } from '../types/service_types';
 import { toNumberSafe, subtractDecimal } from '../utils/utils';
-import { callOllama } from '../utils/ollama';
 
 export const getGoals = async (userId: string) => {
     return withPrismaErrorHandling(async () => {

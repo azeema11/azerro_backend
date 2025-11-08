@@ -8,6 +8,12 @@ type ExchangeRateResponse = {
 
 export async function updateCurrencyRates(base = 'USD') {
     try {
+        // Validate base currency format (must be 3 uppercase letters)
+        const currencyCodePattern = /^[A-Z]{3}$/;
+        if (!currencyCodePattern.test(base)) {
+            throw new Error(`Invalid base currency format: ${base}. Must be 3 uppercase letters (e.g., USD, EUR)`);
+        }
+
         console.log(`Fetching currency rates for base: ${base}`);
         const res = await axios.get<ExchangeRateResponse>(`https://api.fxratesapi.com/latest?base=${base}`);
 
@@ -23,8 +29,15 @@ export async function updateCurrencyRates(base = 'USD') {
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0); // Set to UTC midnight for consistency
 
-        // Add the base currency to itself (e.g., USD to USD = 1.0)
-        const completeRates = { [base]: 1.0, ...rates };
+        // Filter out invalid currencies:
+        // 1. Target equals base (database constraint prevents same currency pairs)
+        // 2. Currency codes that don't match 3-letter format (database constraint requires ^[A-Z]{3}$)
+        // Note: Same currency conversions (e.g., USD to USD) are handled in getHistoricalExchangeRate by returning 1.0
+        const completeRates = Object.fromEntries(
+            Object.entries(rates).filter(([target]) =>
+                target !== base && currencyCodePattern.test(target)
+            )
+        );
 
         // Save to both current rates and historical rates
         const currentRateOps = Object.entries(completeRates).map(([target, rate]) =>
