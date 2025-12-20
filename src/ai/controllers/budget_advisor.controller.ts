@@ -1,10 +1,7 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { getBudgetAnalysis, chatBudgetAdvisor } from '../services/budget_advisor.service';
 import { asyncHandler } from '../../utils/async_handler';
-
-interface AuthRequest extends Request {
-    userId?: string;
-}
+import { AuthRequest } from '../../middlewares/auth.middleware';
 
 export const getBudgetSummaryController = asyncHandler(async (req: AuthRequest, res: Response) => {
     if (!req.userId) {

@@ -1,20 +1,7 @@
 import prisma from "../../utils/db";
 import { generateText } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
-
-interface ResolveGoalConflictInput {
-    userId: string;
-    conflictingGoal: {
-        name: string;
-        targetAmount: number;
-        targetDate: string;
-        currency: string;
-        savedAmount?: number;
-    };
-    userMessage: string;
-    // History of the chat conversation [ { role: 'user' | 'model', content: string } ]
-    history?: { role: string; content: string }[];
-}
+import { ResolveGoalConflictInput } from "../../types/service_types";
 
 export const resolveGoalConflict = async ({
     userId,

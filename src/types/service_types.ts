@@ -10,6 +10,20 @@ export interface CreateGoalInput {
     savedAmount?: number;
 }
 
+export interface ResolveGoalConflictInput {
+    userId: string;
+    conflictingGoal: {
+        name: string;
+        targetAmount: number;
+        targetDate: string;
+        currency: string;
+        savedAmount?: number;
+    };
+    userMessage: string;
+    // History of the chat conversation [ { role: 'user' | 'model', content: string } ]
+    history?: { role: string; content: string }[];
+}
+
 export interface CreateTransactionInput {
     amount: number;
     currency: string;
