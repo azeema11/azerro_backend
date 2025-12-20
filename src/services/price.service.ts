@@ -32,7 +32,7 @@ export const updateHoldingPrices = async () => {
 
 async function updateStockPrices(stocks: (Holding & { user: { baseCurrency: string } })[]) {
     // Process in chunks to respect concurrency limit
-    const CONCURRENCY_LIMIT = 5;
+    const CONCURRENCY_LIMIT = parseInt(process.env.HOLDING_CONCURRENCY_LIMIT || '5', 10);
     const chunkedStocks = [];
     for (let i = 0; i < stocks.length; i += CONCURRENCY_LIMIT) {
         chunkedStocks.push(stocks.slice(i, i + CONCURRENCY_LIMIT));
