@@ -13,6 +13,7 @@
     "populate": "ts-node src/scripts/populate_dummy_data.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^4.13.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

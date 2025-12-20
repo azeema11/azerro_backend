@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const holding_controller_1 = require("../controllers/holding.controller");
+const router = (0, express_1.Router)();
+router.get('/', holding_controller_1.getHoldings);
+router.post('/', holding_controller_1.createHolding);
+router.put('/:id', holding_controller_1.updateHolding);
+router.delete('/:id', holding_controller_1.deleteHolding);
+exports.default = router;

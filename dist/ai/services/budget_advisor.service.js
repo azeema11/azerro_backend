@@ -1,0 +1,158 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.chatBudgetAdvisor = exports.getBudgetAnalysis = void 0;
+const db_1 = __importDefault(require("../../utils/db"));
+const ai_provider_1 = require("../utils/ai_provider");
+const utils_1 = require("../../utils/utils");
+/**
+ * Generates a passive budget analysis summary for the user.
+ */
+const getBudgetAnalysis = async (userId) => {
+    try {
+        // 1. Fetch User Data
+        const user = await db_1.default.user.findUnique({
+            where: { id: userId },
+            select: { baseCurrency: true, monthlyIncome: true }
+        });
+        if (!user)
+            throw new Error("User not found");
+        // 2. Fetch Recent Transactions (Last 30 Days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const transactions = await db_1.default.transaction.findMany({
+            where: {
+                userId,
+                date: { gte: thirtyDaysAgo }
+            },
+            select: {
+                amount: true,
+                currency: true,
+                category: true,
+                type: true,
+                date: true
+            }
+        });
+        // 3. Fetch Active Budgets
+        const budgets = await db_1.default.budget.findMany({
+            where: { userId }
+        });
+        // 4. Summarize Data for AI
+        const income = (0, utils_1.toNumberSafe)(user.monthlyIncome || 0);
+        // Group spending by category
+        const spendingByCategory = {};
+        let totalSpent = 0;
+        transactions.forEach(t => {
+            if (t.type === 'EXPENSE') {
+                const amt = (0, utils_1.toNumberSafe)(t.amount);
+                spendingByCategory[t.category] = (spendingByCategory[t.category] || 0) + amt;
+                totalSpent += amt;
+            }
+        });
+        // 5. Build Prompt
+        const prompt = `
+You are the Budget Advisor for Azerro.
+Analyze the user's financial data for the last 30 days.
+
+Data:
+- Base Currency: ${user.baseCurrency}
+- Monthly Income: ${income}
+- Total Spent (Last 30d): ${totalSpent}
+- Spending by Category: ${JSON.stringify(spendingByCategory)}
+- Active Budgets: ${JSON.stringify(budgets.map(b => ({ category: b.category, limit: (0, utils_1.toNumberSafe)(b.amount), period: b.period })))}
+
+Your Task:
+Provide a JSON summary with:
+1. "status": "Good" | "Warning" | "Critical"
+2. "insights": An array of 3 short, actionable bullet points strings.
+3. "recommendation": A short paragraph of advice.
+
+Output Format (Strict JSON):
+{
+  "status": "string",
+  "insights": ["string", "string", "string"],
+  "recommendation": "string"
+}
+`;
+        // 6. Call AI
+        const responseText = await (0, ai_provider_1.generateText)(prompt);
+        // 7. Parse Response
+        try {
+            const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+            return JSON.parse(jsonString);
+        }
+        catch (e) {
+            console.error("Failed to parse Budget Analysis JSON", responseText);
+            return {
+                status: "Unknown",
+                insights: ["Could not generate insights at this time."],
+                recommendation: responseText
+            };
+        }
+    }
+    catch (error) {
+        console.error("Error in getBudgetAnalysis:", error);
+        throw new Error("Failed to generate budget analysis");
+    }
+};
+exports.getBudgetAnalysis = getBudgetAnalysis;
+/**
+ * Handles interactive chat with the Budget Advisor.
+ */
+const chatBudgetAdvisor = async (userId, message, history = []) => {
+    try {
+        // Fetch context (similar to above, but maybe less aggregated to allow deeper questions)
+        const user = await db_1.default.user.findUnique({
+            where: { id: userId },
+            select: { baseCurrency: true }
+        });
+        // Fetch recent transactions (last 60 days for broader context in chat)
+        const sixtyDaysAgo = new Date();
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+        const transactions = await db_1.default.transaction.findMany({
+            where: { userId, date: { gte: sixtyDaysAgo } },
+            orderBy: { date: 'desc' },
+            take: 50 // Limit to last 50 for prompt size
+        });
+        const budgets = await db_1.default.budget.findMany({ where: { userId } });
+        const context = {
+            currency: user?.baseCurrency,
+            transactions: transactions.map(t => ({
+                date: t.date.toISOString().split('T')[0],
+                amount: (0, utils_1.toNumberSafe)(t.amount),
+                cat: t.category,
+                type: t.type,
+                desc: t.description
+            })),
+            budgets: budgets.map(b => ({ cat: b.category, amt: (0, utils_1.toNumberSafe)(b.amount), period: b.period }))
+        };
+        const systemPrompt = `
+You are the Budget Advisor Chatbot.
+Answer the user's question based on their recent financial data.
+Be helpful, specific, and data-driven.
+If the answer isn't in the data, say "I don't have enough data to answer that."
+
+Data Context:
+${JSON.stringify(context)}
+`;
+        const conversationHistory = history.map(h => `${h.role === 'user' ? 'User' : 'AI'}: ${h.content}`).join('\n');
+        const fullPrompt = `
+${systemPrompt}
+
+Conversation:
+${conversationHistory}
+
+User Question: "${message}"
+
+Answer:
+`;
+        return await (0, ai_provider_1.generateText)(fullPrompt);
+    }
+    catch (error) {
+        console.error("Error in chatBudgetAdvisor:", error);
+        throw new Error("Failed to process chat message");
+    }
+};
+exports.chatBudgetAdvisor = chatBudgetAdvisor;
