@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { askTransactionAgent } from "../controllers/transactionQA.controller";
-import { resolveGoalConflictController } from "../controllers/goal_resolver.controller";
-import { getBudgetSummaryController, chatBudgetAdvisorController } from "../controllers/budget_advisor.controller";
+import { askTransactionAgent } from "../controllers/transaction.controller";
+import { resolveGoalConflictController } from "../controllers/goal.controller";
+import { getBudgetSummaryController, chatBudgetAdvisorController } from "../controllers/budget.controller";
 
 const router = Router();
 
