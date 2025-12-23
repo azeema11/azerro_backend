@@ -34,6 +34,7 @@ export const resolveGoalConflict = async ({
         const baseCurrency = user.baseCurrency;
 
         const goalSummary = goals.map(g => ({
+            id: g.id,
             name: g.name,
             remaining: toNumberSafe(g.targetAmount) - toNumberSafe(g.savedAmount),
             date: g.targetDate.toISOString().split('T')[0]
@@ -61,19 +62,19 @@ ${JSON.stringify(conflictingGoal)}
 Your Task:
 1. Analyze the situation.
 2. Suggest solutions (e.g., extend the date of the new goal, reduce the amount, or prioritize/delay other goals).
-3. If you find a specific, viable solution that the user seems to agree to, output a "proposal".
-4. If checking for conflicts or discussing, just provide "message".
+3. If you find a specific, viable solution (even if the user hasn't explicitly agreed yet), provide it in the "proposal" field so the user can easily apply it.
+4. In the "message", always refer to goals by their NAME, never by their ID.
 
 Output Format (Strict JSON):
 {
   "type": "goal_conflict",
   "message": "Your helpful response to the user...",
-  "proposal": null | { "targetAmount": number, "targetDate": "YYYY-MM-DD" }
+  "proposal": null | { "id": "string", "goalName": "string", "targetAmount": number, "targetDate": "YYYY-MM-DD" }
 }
 
 Important:
 - Output ONLY valid JSON.
-- "proposal" should be null unless the user has explicitly agreed to a modified plan or you are offering a concrete fix they can click to apply.
+- Use the "proposal" field to offer actionable updates (like extending a deadline) that the user can click to apply.
 - Be concise and empathetic.
 `;
 
