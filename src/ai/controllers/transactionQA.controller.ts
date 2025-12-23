@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { askQuestionToTransactionAgent } from "../services/transaction.service";
+import { askQuestionToTransactionAgent } from "../services/transactionQA.service";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../utils/async_handler";
 

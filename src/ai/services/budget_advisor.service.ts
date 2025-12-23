@@ -1,6 +1,7 @@
 import prisma from "../../utils/db";
 import { generateText } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
+import { extractJsonFromText } from "../utils/json_extractor";
 
 /**
  * Generates a passive budget analysis summary for the user.
@@ -83,15 +84,16 @@ Output Format (Strict JSON):
         const responseText = await generateText(prompt);
 
         // 7. Parse Response
-        try {
-            const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(jsonString);
-        } catch (e) {
+        const parsedResponse = extractJsonFromText(responseText);
+
+        if (parsedResponse) {
+            return parsedResponse;
+        } else {
             console.error("Failed to parse Budget Analysis JSON", responseText);
             return {
                 status: "Unknown",
                 insights: ["Could not generate insights at this time."],
-                recommendation: responseText
+                recommendation: responseText // Return raw text as recommendation if parsing fails
             };
         }
 

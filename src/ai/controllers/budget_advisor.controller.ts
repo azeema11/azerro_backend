@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { getBudgetAnalysis, chatBudgetAdvisor } from '../services/budget.service';
+import { getBudgetAnalysis, chatBudgetAdvisor } from '../services/budget_advisor.service';
 import { asyncHandler } from '../../utils/async_handler';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 

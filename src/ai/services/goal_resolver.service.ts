@@ -2,6 +2,7 @@ import prisma from "../../utils/db";
 import { generateText } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
 import { ResolveGoalConflictInput } from "../../types/service_types";
+import { extractJsonFromText } from "../utils/json_extractor";
 
 export const resolveGoalConflict = async ({
     userId,
@@ -92,12 +93,9 @@ Response (JSON):
         const responseText = await generateText(fullPrompt);
 
         // 7. Parse Response
-        let parsedResponse;
-        try {
-            // Clean up code blocks if the AI wraps JSON in ```json ... ```
-            const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsedResponse = JSON.parse(jsonString);
-        } catch (e) {
+        let parsedResponse = extractJsonFromText(responseText);
+
+        if (!parsedResponse) {
             console.error("Failed to parse AI response as JSON", responseText);
             // Fallback for chat-only response
             parsedResponse = {
