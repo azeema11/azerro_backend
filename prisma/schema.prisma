@@ -94,7 +94,6 @@ model Transaction {
   @@index([userId, type])
   @@index([userId, date])
   @@index([userId, category])
-  @@index([date])
 }
 
 model BankAccount {
@@ -136,7 +135,6 @@ model PlannedEvent {
   @@index([userId, completed])
   @@index([userId, targetDate])
   @@index([userId, category])
-  @@index([targetDate])
 }
 
 model Budget {
@@ -235,5 +233,4 @@ model Goal {
   @@index([userId])
   @@index([userId, completed])
   @@index([userId, targetDate])
-  @@index([targetDate])
 }
