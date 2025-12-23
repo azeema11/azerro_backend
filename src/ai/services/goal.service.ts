@@ -64,8 +64,9 @@ ${JSON.stringify(conflictingGoal)}
 Your Task:
 1. Analyze the situation.
 2. Suggest solutions (e.g., extend the date of the new goal, reduce the amount, or prioritize/delay other goals).
-3. If you find a specific, viable solution (even if the user hasn't explicitly agreed yet), provide it in the "proposal" field so the user can easily apply it.
-4. In the "message", always refer to goals by their NAME, never by their ID.
+3. If you suggest a solution in the text (like moving a deadline or reducing an amount), you MUST provide the corresponding actionable update in the "proposal" field.
+4. Calculate specific adjustments (e.g. specific new dates). Do not be vague (e.g. "adjust savings"). If you say "delay for 6 months", calculate the exact new date.
+5. In the "message", always refer to goals by their NAME, never by their ID.
 
 Output Format (Strict JSON):
 {
