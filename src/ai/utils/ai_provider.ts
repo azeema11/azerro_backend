@@ -14,12 +14,11 @@ export async function generateText(prompt: string): Promise<string> {
     if (apiKey) {
         try {
             const genAI = new GoogleGenerativeAI(apiKey);
-            // using gemini-2.5-flash for speed and cost effectiveness, can be swapped for pro
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            // using gemini-2.5-flash-lite for speed and cost effectiveness, can be swapped for pro
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
             const result = await model.generateContent(prompt);
-            const response = await result.response;
-            return response.text();
+            return result.response.text();
         } catch (error) {
             console.error("Gemini API request failed, falling back to Ollama:", error);
             // Fallback to Ollama if Gemini fails
