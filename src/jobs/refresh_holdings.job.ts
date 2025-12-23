@@ -2,8 +2,7 @@ import cron from 'node-cron';
 import { updateHoldingPrices } from '../services/price.service';
 
 export const scheduleHoldingRefresh = () => {
-  // Run every 6 hours
-  cron.schedule('0 */6 * * *', async () => {
+  cron.schedule(process.env.HOLDING_REFRESH_CRON || '0 */6 * * *', async () => {
     console.log('[Holdings Refresh] Started job...');
     try {
       await updateHoldingPrices();
