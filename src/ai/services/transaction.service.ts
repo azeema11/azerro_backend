@@ -2,6 +2,7 @@ import { callOllama } from "../utils/ollama";
 import prisma from "../../utils/db";
 import { toNumberSafe } from "../../utils/utils";
 import { withPrismaErrorHandling } from "../../utils/prisma_errors";
+import { generateText } from "../utils/ai_provider";
 
 export const askQuestionToTransactionAgent = async (userId: string, question: string): Promise<{ success: boolean, answer: string }> => {
 
@@ -52,10 +53,10 @@ Question: ${question}
 `;
 
     try {
-        const response = await callOllama(prompt);
+        const responseText = await generateText(prompt);
         return {
             success: true,
-            answer: response,
+            answer: responseText,
         };
     } catch (error) {
         console.error("AI Transaction Q&A Error:", error);

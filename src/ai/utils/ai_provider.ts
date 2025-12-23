@@ -14,8 +14,8 @@ export async function generateText(prompt: string): Promise<string> {
     if (apiKey) {
         try {
             const genAI = new GoogleGenerativeAI(apiKey);
-            // using gemini-1.5-flash for speed and cost effectiveness, can be swapped for pro
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            // using gemini-2.5-flash for speed and cost effectiveness, can be swapped for pro
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
             const result = await model.generateContent(prompt);
             const response = await result.response;

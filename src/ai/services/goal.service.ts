@@ -88,28 +88,20 @@ User's Latest Input: "${userMessage}"
 Response (JSON):
 `;
 
-        // 6. Call AI
-        const responseText = await generateText(fullPrompt);
-
-        // 7. Parse Response
-        let parsedResponse;
         try {
-            // Clean up code blocks if the AI wraps JSON in ```json ... ```
-            const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsedResponse = JSON.parse(jsonString);
-        } catch (e) {
-            console.error("Failed to parse AI response as JSON", responseText);
-            // Fallback for chat-only response
-            parsedResponse = {
-                message: responseText,
-                proposal: null
+            const responseText = await generateText(fullPrompt);
+            return {
+                success: true,
+                answer: responseText,
             };
+        } catch (error) {
+            console.error("Failed to parse AI response as JSON:", error);
+            // Fallback for chat-only response
+            return { success: false, answer: "Error processing your request." };
         }
-
-        return parsedResponse;
 
     } catch (error) {
         console.error("Error in resolveGoalConflict:", error);
-        throw new Error("Failed to resolve goal conflict");
+        return { success: false, answer: "Error processing your request." };
     }
 };

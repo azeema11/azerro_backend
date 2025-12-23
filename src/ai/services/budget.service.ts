@@ -79,25 +79,20 @@ Output Format (Strict JSON):
 }
 `;
 
-        // 6. Call AI
-        const responseText = await generateText(prompt);
-
-        // 7. Parse Response
         try {
-            const jsonString = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(jsonString);
-        } catch (e) {
-            console.error("Failed to parse Budget Analysis JSON", responseText);
+            const responseText = await generateText(prompt);
             return {
-                status: "Unknown",
-                insights: ["Could not generate insights at this time."],
-                recommendation: responseText
+                success: true,
+                answer: responseText,
             };
+        } catch (error) {
+            console.error("AI Budget Analysis Error:", error);
+            return { success: false, answer: "Error processing your request." };
         }
 
     } catch (error) {
         console.error("Error in getBudgetAnalysis:", error);
-        throw new Error("Failed to generate budget analysis");
+        return { success: false, answer: "Error processing your request." };
     }
 };
 
@@ -108,8 +103,8 @@ export const chatBudgetAdvisor = async (userId: string, message: string, history
     try {
         // Fetch context (similar to above, but maybe less aggregated to allow deeper questions)
         const user = await prisma.user.findUnique({
-             where: { id: userId },
-             select: { baseCurrency: true }
+            where: { id: userId },
+            select: { baseCurrency: true }
         });
 
         // Fetch recent transactions (last 60 days for broader context in chat)
@@ -159,10 +154,19 @@ User Question: "${message}"
 Answer:
 `;
 
-        return await generateText(fullPrompt);
+        try {
+            const responseText = await generateText(fullPrompt);
+            return {
+                success: true,
+                answer: responseText,
+            };
+        } catch (error) {
+            console.error("AI Budget Advisor Error:", error);
+            return { success: false, answer: "Error processing your request." };
+        }
 
     } catch (error) {
         console.error("Error in chatBudgetAdvisor:", error);
-        throw new Error("Failed to process chat message");
+        return { success: false, answer: "Error processing your request." };
     }
 };
