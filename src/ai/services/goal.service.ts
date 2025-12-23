@@ -36,6 +36,8 @@ export const resolveGoalConflict = async ({
         const goalSummary = goals.map(g => ({
             id: g.id,
             name: g.name,
+            targetAmount: toNumberSafe(g.targetAmount),
+            savedAmount: toNumberSafe(g.savedAmount),
             remaining: toNumberSafe(g.targetAmount) - toNumberSafe(g.savedAmount),
             date: g.targetDate.toISOString().split('T')[0]
         }));
@@ -69,12 +71,13 @@ Output Format (Strict JSON):
 {
   "type": "goal_conflict",
   "message": "Your helpful response to the user...",
-  "proposal": null | { "id": "string", "goalName": "string", "targetAmount": number, "targetDate": "YYYY-MM-DD" }
+  "proposal": null | { "id": "string", "goalName": "string", "targetAmount"?: number, "targetDate"?: "YYYY-MM-DD" }
 }
 
 Important:
 - Output ONLY valid JSON.
-- Use the "proposal" field to offer actionable updates (like extending a deadline) that the user can click to apply.
+- In "proposal", ONLY include fields that need to be changed. For example, if you are only extending the deadline, provide "targetDate" and OMIT "targetAmount".
+- Do NOT change the target amount unless the solution specifically requires reducing the goal's total cost.
 - Be concise and empathetic.
 `;
 
