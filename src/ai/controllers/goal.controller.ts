@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { resolveGoalConflict } from '../services/goal_resolver.service';
+import { resolveGoalConflict } from '../services/goal.service';
 import { asyncHandler } from '../../utils/async_handler';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 
