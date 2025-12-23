@@ -91,7 +91,7 @@ Output Format (Strict JSON):
                     answer: parsedResponse,
                 };
             } else {
-                 return {
+                return {
                     success: true,
                     answer: {
                         type: "budget_analysis",
