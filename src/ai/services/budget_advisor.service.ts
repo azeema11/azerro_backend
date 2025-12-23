@@ -1,6 +1,7 @@
 import prisma from "../../utils/db";
 import { generateText } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
+import { extractJsonFromText } from "../utils/json_extractor";
 
 /**
  * Generates a passive budget analysis summary for the user.

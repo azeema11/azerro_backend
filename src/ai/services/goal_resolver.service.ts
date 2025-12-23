@@ -2,6 +2,7 @@ import prisma from "../../utils/db";
 import { generateText } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
 import { ResolveGoalConflictInput } from "../../types/service_types";
+import { extractJsonFromText } from "../utils/json_extractor";
 
 export const resolveGoalConflict = async ({
     userId,
