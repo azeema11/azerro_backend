@@ -5,13 +5,24 @@ import { getBudgetSummaryController, chatBudgetAdvisorController } from "../cont
 
 const router = Router();
 
-router.post("/transactionAgent", askTransactionAgent);
+// Create separate routers for each group
+const transactionRouter = Router();
+const goalRouter = Router();
+const budgetRouter = Router();
+
+// Mount sub-routers to the main router
+router.use("/transaction", transactionRouter);
+router.use("/goal", goalRouter);
+router.use("/budget", budgetRouter);
+
+// Transaction Agent
+transactionRouter.post("/agent", askTransactionAgent);
 
 // Goal Conflict Resolver
-router.post("/goals/resolve", resolveGoalConflictController);
+goalRouter.post("/resolve", resolveGoalConflictController);
 
 // Budget Advisor
-router.get("/budget/summary", getBudgetSummaryController);
-router.post("/budget/chat", chatBudgetAdvisorController);
+budgetRouter.get("/summary", getBudgetSummaryController);
+budgetRouter.post("/chat", chatBudgetAdvisorController);
 
 export default router;
