@@ -3,8 +3,9 @@ import prisma from "../../utils/db";
 import { toNumberSafe } from "../../utils/utils";
 import { withPrismaErrorHandling } from "../../utils/prisma_errors";
 import { generateText } from "../utils/ai_provider";
+import { extractJsonFromText } from "../utils/json_extractor";
 
-export const askQuestionToTransactionAgent = async (userId: string, question: string): Promise<{ success: boolean, answer: string }> => {
+export const askQuestionToTransactionAgent = async (userId: string, question: string): Promise<{ success: boolean, answer: any }> => {
 
     // Fetch all user transactions with only the fields needed for AI context
     const transactions = await withPrismaErrorHandling(async () => {
@@ -50,16 +51,44 @@ Transactions:
 ${JSON.stringify(transactionContext, null, 2)}
 
 Question: ${question}
+
+Output Format (Strict JSON):
+{
+  "type": "chat",
+  "message": "Your answer...",
+  "action": null | { "type": "create_transaction", "amount": number, "category": "string", "description": "string" }
+}
 `;
 
     try {
         const responseText = await generateText(prompt);
-        return {
-            success: true,
-            answer: responseText,
-        };
+        const parsedResponse = extractJsonFromText(responseText);
+
+        if (parsedResponse) {
+             return {
+                success: true,
+                answer: parsedResponse,
+            };
+        } else {
+             return {
+                success: true,
+                answer: {
+                    type: "chat",
+                    message: responseText,
+                    action: null
+                }
+            };
+        }
+
     } catch (error) {
         console.error("AI Transaction Q&A Error:", error);
-        return { success: false, answer: "Error processing your request." };
+        return {
+            success: false,
+            answer: {
+                type: "chat",
+                message: "Error processing your request.",
+                action: null
+            }
+        };
     }
 }

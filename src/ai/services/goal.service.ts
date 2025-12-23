@@ -9,7 +9,7 @@ export const resolveGoalConflict = async ({
     conflictingGoal,
     userMessage,
     history = []
-}: ResolveGoalConflictInput) => {
+}: ResolveGoalConflictInput): Promise<{ success: boolean, answer: any }> => {
     try {
         // 1. Fetch User Context (Income & Base Currency)
         const user = await prisma.user.findUnique({
@@ -66,6 +66,7 @@ Your Task:
 
 Output Format (Strict JSON):
 {
+  "type": "goal_conflict",
   "message": "Your helpful response to the user...",
   "proposal": null | { "targetAmount": number, "targetDate": "YYYY-MM-DD" }
 }
@@ -91,18 +92,45 @@ Response (JSON):
 
         try {
             const responseText = await generateText(fullPrompt);
-            return {
-                success: true,
-                answer: responseText,
-            };
+            const parsedResponse = extractJsonFromText(responseText);
+
+            if (parsedResponse) {
+                return {
+                    success: true,
+                    answer: parsedResponse,
+                };
+            } else {
+                 return {
+                    success: true,
+                    answer: {
+                        type: "goal_conflict",
+                        message: responseText,
+                        proposal: null
+                    }
+                };
+            }
         } catch (error) {
             console.error("Failed to parse AI response as JSON:", error);
             // Fallback for chat-only response
-            return { success: false, answer: "Error processing your request." };
+            return {
+                success: false,
+                answer: {
+                    type: "goal_conflict",
+                    message: "Error processing your request.",
+                    proposal: null
+                }
+            };
         }
 
     } catch (error) {
         console.error("Error in resolveGoalConflict:", error);
-        return { success: false, answer: "Error processing your request." };
+        return {
+            success: false,
+            answer: {
+                type: "goal_conflict",
+                message: "Error processing your request.",
+                proposal: null
+            }
+        };
     }
 };

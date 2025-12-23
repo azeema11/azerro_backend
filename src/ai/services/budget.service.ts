@@ -6,7 +6,7 @@ import { extractJsonFromText } from "../utils/json_extractor";
 /**
  * Generates a passive budget analysis summary for the user.
  */
-export const getBudgetAnalysis = async (userId: string) => {
+export const getBudgetAnalysis = async (userId: string): Promise<{ success: boolean, answer: any }> => {
     try {
         // 1. Fetch User Data
         const user = await prisma.user.findUnique({
@@ -74,6 +74,7 @@ Provide a JSON summary with:
 
 Output Format (Strict JSON):
 {
+  "type": "budget_analysis",
   "status": "string",
   "insights": ["string", "string", "string"],
   "recommendation": "string"
@@ -82,25 +83,55 @@ Output Format (Strict JSON):
 
         try {
             const responseText = await generateText(prompt);
-            return {
-                success: true,
-                answer: responseText,
-            };
+            const parsedResponse = extractJsonFromText(responseText);
+
+            if (parsedResponse) {
+                return {
+                    success: true,
+                    answer: parsedResponse,
+                };
+            } else {
+                 return {
+                    success: true,
+                    answer: {
+                        type: "budget_analysis",
+                        status: "Unknown",
+                        insights: [],
+                        recommendation: responseText // Fallback
+                    }
+                };
+            }
         } catch (error) {
             console.error("AI Budget Analysis Error:", error);
-            return { success: false, answer: "Error processing your request." };
+            return {
+                success: false,
+                answer: {
+                    type: "budget_analysis",
+                    status: "Error",
+                    insights: [],
+                    recommendation: "Error processing your request."
+                }
+            };
         }
 
     } catch (error) {
         console.error("Error in getBudgetAnalysis:", error);
-        return { success: false, answer: "Error processing your request." };
+        return {
+            success: false,
+            answer: {
+                type: "budget_analysis",
+                status: "Error",
+                insights: [],
+                recommendation: "Error processing your request."
+            }
+        };
     }
 };
 
 /**
  * Handles interactive chat with the Budget Advisor.
  */
-export const chatBudgetAdvisor = async (userId: string, message: string, history: { role: string, content: string }[] = []) => {
+export const chatBudgetAdvisor = async (userId: string, message: string, history: { role: string, content: string }[] = []): Promise<{ success: boolean, answer: any }> => {
     try {
         // Fetch context (similar to above, but maybe less aggregated to allow deeper questions)
         const user = await prisma.user.findUnique({
@@ -140,6 +171,14 @@ If the answer isn't in the data, say "I don't have enough data to answer that."
 
 Data Context:
 ${JSON.stringify(context)}
+
+Output Format (Strict JSON):
+{
+  "type": "chat",
+  "message": "Your answer...",
+  "action": null | { "type": "create_budget", "category": "string", "amount": number }
+}
+(Only suggest an action if the user explicitly asks to set a budget or the context strongly implies it).
 `;
 
         const conversationHistory = history.map(h => `${h.role === 'user' ? 'User' : 'AI'}: ${h.content}`).join('\n');
@@ -152,22 +191,49 @@ ${conversationHistory}
 
 User Question: "${message}"
 
-Answer:
+Answer (JSON):
 `;
 
         try {
             const responseText = await generateText(fullPrompt);
-            return {
-                success: true,
-                answer: responseText,
-            };
+            const parsedResponse = extractJsonFromText(responseText);
+
+            if (parsedResponse) {
+                return {
+                    success: true,
+                    answer: parsedResponse,
+                };
+            } else {
+                return {
+                    success: true,
+                    answer: {
+                        type: "chat",
+                        message: responseText,
+                        action: null
+                    }
+                };
+            }
         } catch (error) {
             console.error("AI Budget Advisor Error:", error);
-            return { success: false, answer: "Error processing your request." };
+            return {
+                success: false,
+                answer: {
+                    type: "chat",
+                    message: "Error processing your request.",
+                    action: null
+                }
+            };
         }
 
     } catch (error) {
         console.error("Error in chatBudgetAdvisor:", error);
-        return { success: false, answer: "Error processing your request." };
+        return {
+            success: false,
+            answer: {
+                type: "chat",
+                message: "Error processing your request.",
+                action: null
+            }
+        };
     }
 };
