@@ -46,6 +46,7 @@ model User {
 
   baseCurrency  String @default("INR") @db.VarChar(3) // User's preferred reporting currency
   goals         Goal[]
+  chatMessages  ChatMessage[]
 }
 
 model Holding {
@@ -236,4 +237,16 @@ model Goal {
   @@index([userId, completed])
   @@index([userId, targetDate])
   @@index([targetDate])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  role      String   @db.VarChar(10) // "user" or "ai"
+  content   String   @db.Text
+  intent    String?  @db.VarChar(50) // e.g., "budget", "transaction", "general"
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
