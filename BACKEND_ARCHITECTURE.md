@@ -73,7 +73,14 @@ src/
 ├── types/               # TypeScript interfaces and type definitions
 ├── utils/               # Utility functions and helpers (async_handler, currency, date, utils, etc.)
 ├── jobs/                # Background job definitions
-└── scripts/             # Database seeding and maintenance
+├── scripts/             # Database seeding and maintenance
+├── ai/                  # AI-powered features module ✨ **NEW**
+│   ├── controllers/     # AI endpoint handlers
+│   ├── services/        # AI business logic (Gemini/Ollama integration)
+│   ├── routes/          # AI route definitions
+│   └── utils/           # AI provider utilities
+├── validations/         # Zod validation schemas
+└── tests/               # Unit and integration tests
 ```
 
 ## 🔄 Request Flow Architecture
@@ -373,6 +380,7 @@ GET  /budgets/performance        - Get budget vs actual performance
 ```
 GET  /reports/expenses-summary      - Generate expense summary reports with date filtering
 GET  /reports/monthly-income-expense - Monthly income vs expense comparison trends
+GET  /reports/income-vs-expense     - Flexible income vs expense with custom date range
 GET  /reports/category-breakdown    - Category-wise spending breakdown analysis
 GET  /reports/asset-allocation      - Investment portfolio allocation analysis with flexible grouping (?groupBy=assetType|platform|ticker)
 GET  /reports/budget-vs-actual      - Budget vs actual spending comparison
@@ -380,9 +388,16 @@ GET  /reports/goal-progress         - Financial goals progress tracking
 GET  /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
 ```
 
-### Settings Routes (`/settings`)
+### AI Routes (`/ai`) ✨ **NEW**
 ```
-PUT  /settings/preferences      - Update user preferences
+POST /ai/assistant           - Unified AI assistant for general financial advice
+POST /ai/transaction/agent   - AI-powered transaction analysis and Q&A
+POST /ai/goal/resolve        - AI advice for resolving goal conflicts
+GET  /ai/budget/summary      - AI-generated budget summary
+POST /ai/budget/chat         - Chat with AI budget advisor
+POST /ai/report/summarize    - AI-generated report summaries (budgetVsActual, incomeVsExpense, categoryBreakdown)
+GET  /ai/planned-event/impact - AI analysis of planned event financial impact
+GET  /ai/predictive/insights  - AI-powered predictive financial insights
 ```
 
 ## 🔄 Business Logic Flow
@@ -686,14 +701,46 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 DATABASE_URL=postgresql://...
 JWT_SECRET=...
 FINNHUB_API_KEY=...
+GEMINI_API_KEY=...
+OLLAMA_MODEL_ENDPOINT=...
 PORT=3000
 NODE_ENV=production
 ```
 
+### Docker Configuration ✨ **NEW**
+The application includes production-ready Docker support:
+
+**docker-compose.yml**:
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    healthcheck: pg_isready
+    volumes: pgdata
+
+  backend:
+    build: .
+    depends_on: postgres (healthy)
+    healthcheck: /health endpoint
+```
+
+**Dockerfile** (Multi-stage):
+```dockerfile
+# Build stage - compile TypeScript
+FROM node:20-alpine AS build
+RUN npm ci && npx prisma generate && npm run build
+
+# Production stage - minimal image
+FROM node:20-alpine AS production
+RUN npm ci --only=production
+CMD ["node", "dist/index.js"]
+```
+
 ### Production Considerations
-- **Process Management**: PM2 or Docker containers
+- **Process Management**: Docker containers with health checks
 - **Database Migrations**: Automated via Prisma
 - **Logging**: Structured logging for production debugging
+- **Health Checks**: /health endpoint for container orchestration
 
 ## 🔄 Development Workflow
 

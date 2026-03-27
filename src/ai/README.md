@@ -1,14 +1,59 @@
 # AI Module
 
-This module provides AI-powered features for the application, including transaction Q&A, goal conflict resolution, and budget advice.
+This module provides AI-powered features for the application, including transaction Q&A, goal conflict resolution, budget advice, report summarization, and predictive financial insights.
+
+## Features
+
+### Available AI Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ai/assistant` | POST | Unified AI assistant for general financial advice |
+| `/ai/transaction/agent` | POST | Natural language Q&A about transaction history |
+| `/ai/goal/resolve` | POST | AI advice for resolving goal conflicts |
+| `/ai/budget/summary` | GET | AI-generated budget analysis summary |
+| `/ai/budget/chat` | POST | Interactive chat with budget advisor |
+| `/ai/report/summarize` | POST | AI summaries of financial reports |
+| `/ai/planned-event/impact` | GET | AI analysis of planned event financial impact |
+| `/ai/predictive/insights` | GET | AI-powered predictive financial insights |
+
+### AI Provider Configuration
+The module supports two AI providers:
+- **Google Gemini** (Primary): Set `GEMINI_API_KEY` in environment
+- **Ollama** (Fallback): Set `OLLAMA_MODEL_ENDPOINT` for local LLM
 
 ## Architecture & Future Extraction
 
 This module is designed to be potentially extracted into a separate microservice. Currently, it follows a **Shared Database** pattern where it directly accesses the main application's database.
 
+### Module Structure
+```
+src/ai/
+├── controllers/         # HTTP request handlers
+│   ├── assistant.controller.ts
+│   ├── transaction.controller.ts
+│   ├── goal.controller.ts
+│   ├── budget.controller.ts
+│   ├── report.controller.ts
+│   ├── planned_event.controller.ts
+│   └── predictive.controller.ts
+├── services/            # AI business logic
+│   ├── assistant.service.ts
+│   ├── transaction.service.ts
+│   ├── goal.service.ts
+│   ├── budget.service.ts
+│   ├── report.service.ts
+│   ├── planned_event.service.ts
+│   └── predictive.service.ts
+├── routes/
+│   └── ai.route.ts      # Route definitions
+└── utils/
+    └── ai_provider.ts   # Gemini/Ollama integration
+```
+
 ### Integration Points
 The module is integrated into the main app via:
 - `src/index.ts`: Imports and uses `src/ai/routes/ai.route.ts`.
+- All routes are protected by `authMiddleware`.
 
 It **does not** import business logic from `src/services/`. It only relies on data access (Prisma) and general utilities.
 
@@ -42,3 +87,39 @@ If you decide to extract this `src/ai` folder into a separate repository/microse
 5.  Set up the `schema.prisma` file in the new project to match the main application's database schema.
 6.  Update imports in the copied files to point to the local versions of utilities and Prisma.
 7.  Update the `controllers` to read `userId` from the request body or headers, rather than relying on the Express `req.user` object from the main app's middleware (unless you duplicate the middleware).
+
+## Usage Examples
+
+### Unified Assistant
+```json
+POST /ai/assistant
+{
+    "message": "How can I save more money this month?"
+}
+```
+
+### Transaction Agent
+```json
+POST /ai/transaction/agent
+{
+    "question": "What was my total spending last month?"
+}
+```
+
+### Budget Chat
+```json
+POST /ai/budget/chat
+{
+    "message": "How can I reduce my grocery spending?",
+    "history": []
+}
+```
+
+### Report Summarization
+```json
+POST /ai/report/summarize
+{
+    "reportType": "budgetVsActual",
+    "options": {}
+}
+```

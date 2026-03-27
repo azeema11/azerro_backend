@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres
+    image: postgres:17-alpine
     container_name: azerro-postgres
     restart: always
     ports:
@@ -9,6 +9,19 @@ services:
       - .env
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: azerro-backend
+    restart: always
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
 
 volumes:
   pgdata:
