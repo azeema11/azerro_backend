@@ -1,6 +1,6 @@
 import { Periodicity } from "@prisma/client";
 import { getBudgetVsActual, getIncomeVsExpense, getCategoryBreakdown } from "../../services/report.service";
-import { generateText } from "../utils/ai_provider";
+import { generateAiResponse } from "../utils/ai_provider";
 import { extractJsonFromText } from "../utils/json_extractor";
 import prisma from "../../utils/db";
 
@@ -79,7 +79,7 @@ Output Format (Strict JSON):
 
         // 3. Generate response
         try {
-            const responseText = await generateText(prompt);
+            const responseText = await generateAiResponse(prompt);
             const parsedResponse = extractJsonFromText(responseText);
 
             if (parsedResponse) {

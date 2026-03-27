@@ -15,7 +15,7 @@ vi.mock('../../middlewares/auth.middleware', () => ({
 
 // Mock the AI provider so we don't make real API calls
 vi.mock('../../ai/utils/ai_provider', () => ({
-  generateText: vi.fn()
+  generateAiResponse: vi.fn()
 }));
 
 // Mock Prisma
@@ -48,14 +48,14 @@ describe('AI Routes Integration', () => {
   describe('POST /ai/assistant', () => {
     it('should route intent correctly and return JSON', async () => {
       // Mock the intent routing response
-      (aiProvider.generateText as any).mockResolvedValueOnce(JSON.stringify({
+      (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
         intent: "general",
         confidence: 0.9,
         extractedParams: {}
       }));
 
       // Mock the actual handler response
-      (aiProvider.generateText as any).mockResolvedValueOnce(JSON.stringify({
+      (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
         type: "chat",
         message: "This is a general response.",
         action: null

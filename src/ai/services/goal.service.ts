@@ -1,5 +1,5 @@
 import prisma from "../../utils/db";
-import { generateText } from "../utils/ai_provider";
+import { generateAiResponse } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
 import { ResolveGoalConflictInput } from "../../types/service_types";
 import { extractJsonFromText } from "../utils/json_extractor";
@@ -96,7 +96,7 @@ Response (JSON):
 `;
 
         try {
-            const responseText = await generateText(fullPrompt);
+            const responseText = await generateAiResponse(fullPrompt);
             const parsedResponse = extractJsonFromText(responseText);
 
             if (parsedResponse) {

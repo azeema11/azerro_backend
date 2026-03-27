@@ -2,7 +2,7 @@ import { callOllama } from "../utils/ollama";
 import prisma from "../../utils/db";
 import { toNumberSafe } from "../../utils/utils";
 import { withPrismaErrorHandling } from "../../utils/prisma_errors";
-import { generateText } from "../utils/ai_provider";
+import { generateAiResponse } from "../utils/ai_provider";
 import { extractJsonFromText } from "../utils/json_extractor";
 
 export const askQuestionToTransactionAgent = async (userId: string, question: string): Promise<{ success: boolean, answer: any }> => {
@@ -61,7 +61,7 @@ Output Format (Strict JSON):
 `;
 
     try {
-        const responseText = await generateText(prompt);
+        const responseText = await generateAiResponse(prompt);
         const parsedResponse = extractJsonFromText(responseText);
 
         if (parsedResponse) {

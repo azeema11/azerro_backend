@@ -1,5 +1,5 @@
 import prisma from "../../utils/db";
-import { generateText } from "../utils/ai_provider";
+import { generateAiResponse } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
 import { extractJsonFromText } from "../utils/json_extractor";
 
@@ -72,7 +72,7 @@ Output Format (Strict JSON):
 `;
 
         try {
-            const responseText = await generateText(prompt);
+            const responseText = await generateAiResponse(prompt);
             const parsedResponse = extractJsonFromText(responseText);
 
             if (parsedResponse) {
