@@ -17,7 +17,7 @@ The Azerro backend follows a **layered architecture pattern** with clear separat
 ┌─────────────────────────────────────────────────────┐
 │                 API Gateway Layer                   │
 │              (Express.js Router)                    │
-│         • CORS • JSON Parsing • Routes             │
+│         • CORS • JSON Parsing • Routes              │
 └─────────────────────────────────────────────────────┘
                             │
 ┌─────────────────────────────────────────────────────┐
@@ -86,6 +86,7 @@ src/
 ## 🔄 Request Flow Architecture
 
 ### 1. Authentication Flow
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -106,7 +107,10 @@ sequenceDiagram
     AuthController-->>Client: Return token + userId
 ```
 
+
+
 ### 2. Protected Resource Flow
+
 ```mermaid
 sequenceDiagram
     participant Client
@@ -126,12 +130,16 @@ sequenceDiagram
     Controller-->>Client: JSON response with status code
 ```
 
+
+
 ## 🔧 Core Components
 
 ### 1. Server Configuration (`src/index.ts`)
+
 **Purpose**: Application bootstrap and configuration
 
 **Key Features**:
+
 - Express server setup with CORS and JSON parsing
 - Route registration with authentication middleware
 - Global error handling
@@ -139,6 +147,7 @@ sequenceDiagram
 - Background job initialization
 
 **Startup Sequence**:
+
 1. Load environment variables
 2. Configure Express middleware
 3. Initialize currency rates
@@ -149,6 +158,7 @@ sequenceDiagram
 ### 2. Service Layer Architecture ✨ **NEW**
 
 #### Service Layer Pattern
+
 The application now implements a comprehensive service layer that separates business logic from HTTP handling:
 
 ```typescript
@@ -183,19 +193,21 @@ export const createTransaction = async (
 ```
 
 #### Service Files Overview
-- **`auth.service.ts`** - User authentication and registration
-- **`bank_account.service.ts`** - Bank account CRUD operations
-- **`budget.service.ts`** - Budget management operations
-- **`goal.service.ts`** - Financial goals management
-- **`holding.service.ts`** - Investment holdings with price fetching
-- **`planned_event.service.ts`** - Planned events and future expense management ✨ **NEW**
-- **`transaction.service.ts`** - Transaction management
-- **`user.service.ts`** - User profile and preferences
-- **`report.service.ts`** - Analytics and reporting
-- **`currency_rates.service.ts`** - Currency conversion
-- **`price.service.ts`** - Asset price management
+
+- `**auth.service.ts**` - User authentication and registration
+- `**bank_account.service.ts**` - Bank account CRUD operations
+- `**budget.service.ts**` - Budget management operations
+- `**goal.service.ts**` - Financial goals management
+- `**holding.service.ts**` - Investment holdings with price fetching
+- `**planned_event.service.ts**` - Planned events and future expense management ✨ **NEW**
+- `**transaction.service.ts`** - Transaction management
+- `**user.service.ts**` - User profile and preferences
+- `**report.service.ts**` - Analytics and reporting
+- `**currency_rates.service.ts**` - Currency conversion
+- `**price.service.ts**` - Asset price management
 
 #### Controller Pattern ✨ **UPDATED**
+
 Controllers now focus solely on HTTP concerns and delegate all business logic to services:
 
 ```typescript
@@ -228,11 +240,13 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
 ### 3. Authentication System
 
 #### JWT-Based Authentication
+
 - **Token Generation**: 7-day expiry tokens
 - **Password Security**: bcrypt hashing with salt rounds
 - **Middleware Protection**: Request-level user identification
 
 #### Authentication Middleware (`src/middlewares/auth.middleware.ts`)
+
 ```typescript
 // Extends Request interface with userId
 interface AuthRequest extends Request {
@@ -249,6 +263,7 @@ export const authMiddleware = (req, res, next) => {
 ### 4. Error Handling Strategy
 
 #### Async Handler Pattern (`src/utils/async_handler.ts`)
+
 ```typescript
 // Wraps async functions to catch Promise rejections
 export const asyncHandler = (fn: AsyncFunction) => {
@@ -259,7 +274,9 @@ export const asyncHandler = (fn: AsyncFunction) => {
 ```
 
 #### Service Layer Error Handling ✨ **NEW**
+
 All services implement consistent error handling:
+
 ```typescript
 export const serviceFunction = async (params) => {
   try {
@@ -273,6 +290,7 @@ export const serviceFunction = async (params) => {
 ```
 
 #### Global Error Handler
+
 - Development: Full stack traces
 - Production: Clean error messages
 - Centralized error logging
@@ -280,12 +298,14 @@ export const serviceFunction = async (params) => {
 ### 5. Database Architecture
 
 #### Prisma ORM Integration (`src/utils/db.ts`)
+
 - Single Prisma client instance
 - Connection pooling
 - Type-safe database operations
 - Automatic query optimization
 
 #### Database Patterns
+
 - **UUID Primary Keys**: Enhanced security and distribution
 - **Soft Relationships**: Nullable foreign keys for data integrity
 - **Automatic Timestamps**: Creation and update tracking
@@ -295,6 +315,7 @@ export const serviceFunction = async (params) => {
 - **Data Integrity Constraints**: Database-level validation for business rules ✨ **NEW**
 
 #### Utility Functions
+
 - **AsyncHandler**: Consistent error handling wrapper (`src/utils/async_handler.ts`)
 - **Currency Conversion**: Advanced historical and current currency conversion (`src/utils/currency.ts`) ✨ **ENHANCED**
   - `convertCurrencyFromDB()` - Current exchange rate conversion
@@ -327,12 +348,14 @@ export const serviceFunction = async (params) => {
 ## 🔌 API Endpoints Structure
 
 ### Authentication Routes (`/auth`)
+
 ```
 POST /auth/signup     - User registration
 POST /auth/login      - User authentication
 ```
 
 ### Protected Routes (Require JWT)
+
 ```
 GET  /user/me                    - Get user profile
 PUT  /user/preferences           - Update user settings
@@ -369,15 +392,18 @@ PUT  /planned-events/reset/:id  - Undo completion (removes transaction)
 
 ### Budget Management Routes (`/budgets`) ✨ **NEW**
 ```
+
 POST /budgets                    - Create budget
 GET  /budgets                    - List user budgets  
 PUT  /budgets/:id                - Update budget
 DELETE /budgets/:id              - Delete budget
 GET  /budgets/performance        - Get budget vs actual performance
+
 ```
 
 ### Reports Routes (`/reports`)
 ```
+
 GET  /reports/expenses-summary      - Generate expense summary reports with date filtering
 GET  /reports/monthly-income-expense - Monthly income vs expense comparison trends
 GET  /reports/income-vs-expense     - Flexible income vs expense with custom date range
@@ -386,10 +412,12 @@ GET  /reports/asset-allocation      - Investment portfolio allocation analysis w
 GET  /reports/budget-vs-actual      - Budget vs actual spending comparison
 GET  /reports/goal-progress         - Financial goals progress tracking
 GET  /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
+
 ```
 
 ### AI Routes (`/ai`) ✨ **NEW**
 ```
+
 POST /ai/assistant           - Unified AI assistant for general financial advice
 POST /ai/transaction/agent   - AI-powered transaction analysis and Q&A
 POST /ai/goal/resolve        - AI advice for resolving goal conflicts
@@ -398,6 +426,7 @@ POST /ai/budget/chat         - Chat with AI budget advisor
 POST /ai/report/summarize    - AI-generated report summaries (budgetVsActual, incomeVsExpense, categoryBreakdown)
 GET  /ai/planned-event/impact - AI analysis of planned event financial impact
 GET  /ai/predictive/insights  - AI-powered predictive financial insights
+
 ```
 
 ## 🔄 Business Logic Flow
@@ -418,6 +447,7 @@ graph TD
 ```
 
 ### 2. Holdings Management Flow
+
 ```mermaid
 graph TD
     A[Create Holding] --> B[Holdings Service]
@@ -429,13 +459,17 @@ graph TD
     G --> H[Update Converted Values]
 ```
 
+
+
 **Implementation Details**:
+
 1. **Price Fetching**: Real-time price lookup during creation
 2. **Multi-Platform Support**: Zerodha, Binance, etc.
 3. **Asset Types**: Stocks (Finnhub), Crypto (CoinGecko), Metals (metals.live)
 4. **Currency Conversion**: Automatic conversion to user's base currency
 
 ### 3. Planned Events Management Flow ✨ **NEW**
+
 ```mermaid
 graph TD
     A[Create Planned Event] --> B[Planned Event Service]
@@ -451,7 +485,10 @@ graph TD
     K --> L[Reset Event Status]
 ```
 
+
+
 **Planned Events Features**:
+
 1. **Event Creation**: Plan future expenses with target dates and estimated costs
 2. **Currency Support**: Automatic default to user's base currency
 3. **Category Integration**: Uses transaction categories for expense tracking
@@ -461,6 +498,7 @@ graph TD
 7. **User Isolation**: All events filtered by userId for security
 
 ### 4. Budget Management Flow ✨ **NEW**
+
 ```mermaid
 graph TD
     A[Create Budget] --> B[Budget Service]
@@ -474,7 +512,10 @@ graph TD
     I --> J[Return Analysis]
 ```
 
+
+
 **Budget Management Features**:
+
 1. **Budget Creation**: Set spending limits by category and period
 2. **Period Support**: WEEKLY, MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY
 3. **Performance Analysis**: Compare actual spending vs budgeted amounts
@@ -482,6 +523,7 @@ graph TD
 5. **Real-time Tracking**: Integration with transaction data
 
 ### 4. Currency Conversion Flow ✨ **ENHANCED**
+
 ```mermaid
 graph TD
     A[Currency Request] --> B{Same Currency?}
@@ -502,13 +544,17 @@ graph TD
     K --> O
 ```
 
+
+
 **Implementation**: 
+
 - **Current Conversion**: Database-cached current exchange rates
 - **Historical Conversion**: Date-specific exchange rates with smart fallback to closest previous date
 - **Dual Storage**: Both current and historical rates maintained
 - **Error Handling**: Clear errors when rates are missing, ensuring data integrity
 
 ### 5. Goal Conflict Detection Flow
+
 ```mermaid
 graph TD
     A[Check Goal Conflicts] --> B[Goal Service]
@@ -520,18 +566,24 @@ graph TD
     F -->|No| H[Return No Conflicts]
 ```
 
+
+
 ## ⚙️ Background Jobs Architecture
 
 ### Job Scheduling System
+
 **Framework**: `node-cron` for cron-based scheduling
 **Schedules**: 
-- **Data Updates**: Every 6 hours (`0 */6 * * *`)
-- **Database Maintenance**: Monthly (`0 2 1 * *`) ✨ **NEW**
+
+- **Data Updates**: Every 6 hours (`0 */6 * * `*)
+- **Database Maintenance**: Monthly (`0 2 1 * `*) ✨ **NEW**
 
 ### 1. Currency Rate Refresh Job ✨ **ENHANCED**
+
 **Purpose**: Update exchange rates from external APIs with historical storage
 
 **Flow**:
+
 1. Fetch rates from fxratesapi.com
 2. Upsert rates in current rates table (CurrencyRate)
 3. Store rates in historical table (CurrencyRateHistory) with date
@@ -540,30 +592,35 @@ graph TD
 6. Log operation status with detailed information
 
 ### 2. Holdings Price Refresh Job
+
 **Purpose**: Update investment holding prices
 
 **Flow**:
+
 1. Group holdings by asset type
 2. Batch API calls by type:
-   - **Stocks**: Finnhub API
-   - **Crypto**: CoinGecko API  
-   - **Metals**: metals.live API
+  - **Stocks**: Finnhub API
+  - **Crypto**: CoinGecko API  
+  - **Metals**: metals.live API
 3. Convert prices to user base currencies
 4. Update database with new prices and values
 
 **Optimization**: Single query with joins to avoid N+1 problems
 
 ### 3. Database Maintenance Job ✨ **NEW**
+
 **Purpose**: Automated monthly database optimization and maintenance
 
 **Flow**:
+
 1. **VACUUM FULL**: Reclaim space from deleted/updated rows
-2. **REINDEX**: Rebuild all indexes for optimal performance  
+2. **REINDEX**: Rebuild all indexes for optimal performance
 3. **ANALYZE**: Update query planner statistics for efficient execution plans
 4. **Size Reporting**: Log database size before/after with space savings metrics
 5. **Error Handling**: Graceful failure handling without affecting application
 
 **Benefits**:
+
 - **Automated Optimization**: No manual intervention required
 - **Performance Maintenance**: Keeps query performance optimal as data grows
 - **Space Reclamation**: Prevents database bloat over time
@@ -572,17 +629,20 @@ graph TD
 ## 🔐 Security Implementation
 
 ### 1. Authentication Security
+
 - **JWT Tokens**: Signed with secret key, 7-day expiry
 - **Password Hashing**: bcrypt with automatic salt generation
 - **Token Validation**: Middleware-level verification
 
 ### 2. Authorization Patterns ✨ **ENHANCED**
+
 - **User Isolation**: All resources filtered by `userId`
 - **Controller-Level Checks**: Explicit authorization validation in each controller
 - **Request Validation**: Input sanitization and type checking
 - **Error Handling**: No sensitive data leakage
 
 ### 3. Database Security
+
 - **Parameterized Queries**: Prisma prevents SQL injection
 - **Connection Pooling**: Managed connection limits
 - **Environment Variables**: Sensitive data externalized
@@ -590,6 +650,7 @@ graph TD
 ## 🔄 Data Flow Patterns
 
 ### 1. Service Layer Pattern ✨ **ENHANCED**
+
 ```typescript
 // Controllers delegate to services with typed input objects
 export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -616,6 +677,7 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
 ```
 
 ### 2. Service Implementation Pattern ✨ **ENHANCED**
+
 ```typescript
 // Services handle business logic with typed inputs and structured error handling
 export const createTransaction = async (
@@ -664,6 +726,7 @@ export const createTransaction = async (
 ```
 
 ### 3. External API Integration Pattern
+
 ```typescript
 // Resilient external API calls in services
 async function fetchCurrentPrice(ticker: string, assetType: string) {
@@ -680,16 +743,19 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 ## 📊 Performance Optimizations
 
 ### 1. Database Optimizations
+
 - **Single Query with Joins**: Avoid N+1 query problems
 - **Selective Field Loading**: Only fetch required columns
 - **Batch Operations**: Group similar operations
 
 ### 2. API Optimizations
+
 - **Async/Await**: Non-blocking operations
 - **Promise.all()**: Parallel processing where possible
 - **Error Boundaries**: Graceful degradation
 
 ### 3. Memory Management
+
 - **Connection Pooling**: Prisma manages database connections
 - **Graceful Shutdown**: Clean resource cleanup
 - **Process Signal Handling**: SIGINT, SIGTERM, SIGUSR2
@@ -697,6 +763,7 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 ## 🚀 Deployment Architecture
 
 ### Environment Configuration
+
 ```env
 DATABASE_URL=postgresql://...
 JWT_SECRET=...
@@ -708,9 +775,11 @@ NODE_ENV=production
 ```
 
 ### Docker Configuration ✨ **NEW**
+
 The application includes production-ready Docker support:
 
 **docker-compose.yml**:
+
 ```yaml
 services:
   postgres:
@@ -725,6 +794,7 @@ services:
 ```
 
 **Dockerfile** (Multi-stage):
+
 ```dockerfile
 # Build stage - compile TypeScript
 FROM node:20-alpine AS build
@@ -737,6 +807,7 @@ CMD ["node", "dist/index.js"]
 ```
 
 ### Production Considerations
+
 - **Process Management**: Docker containers with health checks
 - **Database Migrations**: Automated via Prisma
 - **Logging**: Structured logging for production debugging
@@ -745,6 +816,7 @@ CMD ["node", "dist/index.js"]
 ## 🔄 Development Workflow
 
 ### Scripts
+
 ```json
 {
   "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -757,6 +829,7 @@ CMD ["node", "dist/index.js"]
 ```
 
 ### Development Features
+
 - **Hot Reload**: ts-node-dev for development
 - **Type Safety**: Full TypeScript coverage
 - **Database Schema**: Prisma-managed migrations
@@ -765,6 +838,7 @@ CMD ["node", "dist/index.js"]
 ## 🆕 Recent Architecture Enhancements
 
 ### Service Layer Implementation ✨ **MAJOR UPDATE**
+
 - **Complete Service Layer**: All controllers now use dedicated service functions
 - **Business Logic Separation**: Database operations moved from controllers to services
 - **Structured Error Handling**: All services use `withPrismaErrorHandling` and `ValidationError`
@@ -773,6 +847,7 @@ CMD ["node", "dist/index.js"]
 - **Consistent Patterns**: Standardized create/update operations with typed data objects
 
 ### Type System Enhancement ✨ **NEW**
+
 - **Typed Service Interfaces**: `CreateInput` and `UpdateData` interfaces for all entities
 - **Input Validation**: Structured validation with proper error messages
 - **Type Safety**: Controllers create typed objects before passing to services
@@ -780,6 +855,7 @@ CMD ["node", "dist/index.js"]
 - **Examples**: `CreateGoalInput`, `GoalUpdateData`, `CreateTransactionInput`, etc.
 
 ### Budget Management System ✨ **NEW**
+
 - **Complete Budget CRUD**: Full budget creation, listing, updating, and deletion
 - **Budget Performance Analysis**: Real-time budget vs actual spending comparison
 - **Period Support**: WEEKLY, MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY periods
@@ -790,6 +866,7 @@ CMD ["node", "dist/index.js"]
 - **Real-time Tracking**: Integration with transaction data for performance monitoring
 
 ### Database Optimization & Performance (v4.0) ✨ **PRODUCTION-READY OPTIMIZATION**
+
 - **Complete Schema Optimization**: Comprehensive database optimization achieving enterprise-grade performance
   - **14.4% Size Reduction**: Database size optimized from 8.6MB → 7.36MB (1.21MB saved)
   - **Only 218KB Actual Data**: Achieved maximum storage efficiency (99.7% PostgreSQL overhead is normal)
@@ -823,12 +900,14 @@ CMD ["node", "dist/index.js"]
   - **Financial Accuracy**: 100% precise monetary calculations
 
 ### Authorization Enhancement ✨ **UPDATED**
+
 - **Controller-Level Auth**: Every protected endpoint explicitly checks req.userId
 - **Consistent Status Codes**: Proper HTTP status codes (200, 201, 204, 401) across all endpoints
 - **Error Responses**: Standardized error message format
 - **Security**: Removed use of non-null assertion operator (!) in favor of explicit checks
 
 ### Service Architecture Benefits
+
 - **Reusability**: Services can be easily reused across different parts of the application
 - **Testability**: Business logic can be unit tested independently
 - **Maintainability**: Changes to business logic don't affect HTTP handling
