@@ -8,7 +8,7 @@ import { callOllama } from "./ollama";
  * @param prompt The prompt to send to the AI.
  * @returns The generated text response.
  */
-export async function generateText(prompt: string): Promise<string> {
+export async function generateAiResponse(prompt: string): Promise<string> {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (apiKey) {

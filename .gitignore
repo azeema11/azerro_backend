@@ -6,3 +6,5 @@ dist/
 Azerro_Backend_API_Collection.postman_collection.json
 
 /src/generated/prisma
+
+coverage/
