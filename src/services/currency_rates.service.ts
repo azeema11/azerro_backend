@@ -207,7 +207,7 @@ export async function ensureCurrencyRatesExist() {
 /**
  * Get historical exchange rate for a specific date
  * Falls back to closest previous available date if exact date not found
- * Throws error if no rate is available (ensures data integrity)
+ * Falls back to current rates if no historical data is available
  */
 export async function getHistoricalExchangeRate(
     from: string,
@@ -244,17 +244,40 @@ export async function getHistoricalExchangeRate(
             });
         }
 
-        // If still no historical rate found, this indicates a data integrity issue
+        // If still no historical rate found, try to find the closest future date
         if (!rateRecord) {
+            rateRecord = await prisma.currencyRateHistory.findFirst({
+                where: {
+                    base: from,
+                    target: to,
+                    rateDate: { gte: targetDate },
+                },
+                orderBy: { rateDate: 'asc' },
+            });
+        }
+
+        // If still no historical rate found, fall back to current rates
+        if (!rateRecord) {
+            const currentRate = await prisma.currencyRate.findUnique({
+                where: {
+                    base_target: { base: from, target: to }
+                }
+            });
+
+            if (currentRate) {
+                console.log(`Using current rate for ${from} to ${to} (no historical data for ${targetDate.toISOString().split('T')[0]})`);
+                return typeof currentRate.rate === 'number' ? currentRate.rate : currentRate.rate.toNumber();
+            }
+
             throw new Error(
-                `No historical exchange rate found for ${from} to ${to} on or before ${targetDate.toISOString().split('T')[0]}. ` +
-                `This indicates missing currency rate data that should be populated during deployment.`
+                `No exchange rate found for ${from} to ${to}. ` +
+                `Ensure currency rates have been initialized.`
             );
         }
 
         return typeof rateRecord.rate === 'number' ? rateRecord.rate : rateRecord.rate.toNumber();
     } catch (error) {
         console.error(`Error getting historical exchange rate from ${from} to ${to} for ${date}:`, error);
-        throw error; // Re-throw to maintain error context
+        throw error;
     }
 }
