@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Environment files (secrets!)
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Debug files
+Dockerfile.debug
+docker-compose.debug.yml
+
+# Documentation
+*.md
+!README.md
+
+# Tests
+src/tests
+coverage
+.nyc_output
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Postman collection
+*.postman_collection.json
+
+# Misc
+.cursor
+.turbo
