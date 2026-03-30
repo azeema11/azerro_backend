@@ -4,8 +4,9 @@ export const createGoalSchema = z.object({
     body: z.object({
         name: z.string().min(1),
         targetAmount: z.number().positive(),
-        currency: z.string().length(3),
         targetDate: z.string().datetime(),
+        description: z.string().optional(),
+        savedAmount: z.number().optional(),
     }),
 });
 
