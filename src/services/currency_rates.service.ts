@@ -208,6 +208,7 @@ export async function ensureCurrencyRatesExist() {
  * Get historical exchange rate for a specific date
  * Falls back to closest previous available date if exact date not found
  * Falls back to current rates if no historical data is available
+ * Supports inverse rate calculation (e.g., INR->USD from USD->INR)
  */
 export async function getHistoricalExchangeRate(
     from: string,
@@ -221,61 +222,77 @@ export async function getHistoricalExchangeRate(
         const targetDate = new Date(date);
         targetDate.setUTCHours(0, 0, 0, 0);
 
-        // Try to find exact date first
+        // Helper to extract rate from record
+        const extractRate = (record: any): number => {
+            return typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+        };
+
+        // Try to find exact date first (direct)
         let rateRecord = await prisma.currencyRateHistory.findUnique({
             where: {
-                base_target_rateDate: {
-                    base: from,
-                    target: to,
-                    rateDate: targetDate,
-                },
+                base_target_rateDate: { base: from, target: to, rateDate: targetDate },
             },
         });
+        if (rateRecord) return extractRate(rateRecord);
 
-        // If exact date not found, try to find the closest previous date
-        if (!rateRecord) {
-            rateRecord = await prisma.currencyRateHistory.findFirst({
-                where: {
-                    base: from,
-                    target: to,
-                    rateDate: { lte: targetDate },
-                },
-                orderBy: { rateDate: 'desc' },
-            });
+        // Try inverse rate for exact date (e.g., INR->USD from USD->INR)
+        let inverseRecord = await prisma.currencyRateHistory.findUnique({
+            where: {
+                base_target_rateDate: { base: to, target: from, rateDate: targetDate },
+            },
+        });
+        if (inverseRecord) return 1 / extractRate(inverseRecord);
+
+        // Try closest previous date (direct)
+        rateRecord = await prisma.currencyRateHistory.findFirst({
+            where: { base: from, target: to, rateDate: { lte: targetDate } },
+            orderBy: { rateDate: 'desc' },
+        });
+        if (rateRecord) return extractRate(rateRecord);
+
+        // Try closest previous date (inverse)
+        inverseRecord = await prisma.currencyRateHistory.findFirst({
+            where: { base: to, target: from, rateDate: { lte: targetDate } },
+            orderBy: { rateDate: 'desc' },
+        });
+        if (inverseRecord) return 1 / extractRate(inverseRecord);
+
+        // Try closest future date (direct)
+        rateRecord = await prisma.currencyRateHistory.findFirst({
+            where: { base: from, target: to, rateDate: { gte: targetDate } },
+            orderBy: { rateDate: 'asc' },
+        });
+        if (rateRecord) return extractRate(rateRecord);
+
+        // Try closest future date (inverse)
+        inverseRecord = await prisma.currencyRateHistory.findFirst({
+            where: { base: to, target: from, rateDate: { gte: targetDate } },
+            orderBy: { rateDate: 'asc' },
+        });
+        if (inverseRecord) return 1 / extractRate(inverseRecord);
+
+        // Fall back to current rates (direct)
+        const currentRate = await prisma.currencyRate.findUnique({
+            where: { base_target: { base: from, target: to } }
+        });
+        if (currentRate) {
+            console.log(`Using current rate for ${from} to ${to} (no historical data for ${targetDate.toISOString().split('T')[0]})`);
+            return extractRate(currentRate);
         }
 
-        // If still no historical rate found, try to find the closest future date
-        if (!rateRecord) {
-            rateRecord = await prisma.currencyRateHistory.findFirst({
-                where: {
-                    base: from,
-                    target: to,
-                    rateDate: { gte: targetDate },
-                },
-                orderBy: { rateDate: 'asc' },
-            });
+        // Fall back to current rates (inverse)
+        const inverseCurrentRate = await prisma.currencyRate.findUnique({
+            where: { base_target: { base: to, target: from } }
+        });
+        if (inverseCurrentRate) {
+            console.log(`Using inverse current rate for ${from} to ${to} (no historical data for ${targetDate.toISOString().split('T')[0]})`);
+            return 1 / extractRate(inverseCurrentRate);
         }
 
-        // If still no historical rate found, fall back to current rates
-        if (!rateRecord) {
-            const currentRate = await prisma.currencyRate.findUnique({
-                where: {
-                    base_target: { base: from, target: to }
-                }
-            });
-
-            if (currentRate) {
-                console.log(`Using current rate for ${from} to ${to} (no historical data for ${targetDate.toISOString().split('T')[0]})`);
-                return typeof currentRate.rate === 'number' ? currentRate.rate : currentRate.rate.toNumber();
-            }
-
-            throw new Error(
-                `No exchange rate found for ${from} to ${to}. ` +
-                `Ensure currency rates have been initialized.`
-            );
-        }
-
-        return typeof rateRecord.rate === 'number' ? rateRecord.rate : rateRecord.rate.toNumber();
+        throw new Error(
+            `No exchange rate found for ${from} to ${to}. ` +
+            `Ensure currency rates have been initialized.`
+        );
     } catch (error) {
         console.error(`Error getting historical exchange rate from ${from} to ${to} for ${date}:`, error);
         throw error;
