@@ -71,7 +71,7 @@ describe('AI Routes Integration', () => {
       expect(response.body.answer.message).toBe('This is a general response.');
     });
 
-    it('should validate request body with Zod', async () => {
+    it('should validate request body with Zod and fail missing message', async () => {
       const response = await request(app)
         .post('/ai/assistant')
         .send({}); // Missing message
@@ -79,5 +79,60 @@ describe('AI Routes Integration', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Validation failed');
     });
+  });
+
+  describe('POST /ai/report/summarize', () => {
+    it('should validate reportType parameter', async () => {
+      const response = await request(app)
+        .post('/ai/report/summarize')
+        .send({ reportType: 'invalidType' }); // Invalid enum
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Validation failed');
+    });
+
+    it('should succeed with valid reportType', async () => {
+      (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
+        type: "report_summary",
+        title: "Test",
+        summary: "Test summary",
+        highlights: [],
+        recommendations: []
+      }));
+
+      const response = await request(app)
+        .post('/ai/report/summarize')
+        .send({ reportType: 'budgetVsActual' }); // Valid enum
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('Parameter-less endpoints', () => {
+     it('GET /ai/planned-event/impact should resolve', async () => {
+        (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
+            type: "event_impact_analysis",
+            monthlySavingsRequiredForEvents: 100,
+            impactOnGoals: "None",
+            impactOnIncome: "Low",
+            recommendations: []
+        }));
+
+        const response = await request(app).get('/ai/planned-event/impact');
+        expect(response.status).toBe(200);
+     });
+
+     it('GET /ai/predictive/insights should resolve', async () => {
+         (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
+             type: "predictive_insights",
+             savingsForecast: "Good",
+             spendingTrends: "Stable",
+             goalProjections: [],
+             recommendations: []
+         }));
+
+         const response = await request(app).get('/ai/predictive/insights');
+         expect(response.status).toBe(200);
+     });
   });
 });
