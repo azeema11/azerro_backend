@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:ai": "vitest run src/ai/tests",
+    "test:main": "vitest run src/tests",
     "test:coverage": "vitest run --coverage",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",

@@ -10,6 +10,19 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  postgres-test:
+    image: postgres:17-alpine
+    container_name: azerro-postgres-test
+    restart: always
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: azerro_test
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+
   backend:
     build:
       context: .
@@ -25,3 +38,4 @@ services:
 
 volumes:
   pgdata:
+  pgdata-test:
