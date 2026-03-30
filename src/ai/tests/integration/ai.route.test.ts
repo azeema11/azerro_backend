@@ -1,12 +1,13 @@
 import request from 'supertest';
 import express, { Express } from 'express';
-import aiRouter from '../../ai/routes/ai.route';
-import { authMiddleware } from '../../middlewares/auth.middleware';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as aiProvider from '../../ai/utils/ai_provider';
+import aiRouter from '../../routes/ai.route';
+import { authMiddleware } from '../../../middlewares/auth.middleware';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import * as aiProvider from '../../utils/ai_provider';
+import prisma from '../../../utils/db';
 
 // Mock auth middleware to bypass JWT check for tests
-vi.mock('../../middlewares/auth.middleware', () => ({
+vi.mock('../../../middlewares/auth.middleware', () => ({
   authMiddleware: (req: any, res: any, next: any) => {
     req.userId = 'test-user-id';
     next();
@@ -14,34 +15,37 @@ vi.mock('../../middlewares/auth.middleware', () => ({
 }));
 
 // Mock the AI provider so we don't make real API calls
-vi.mock('../../ai/utils/ai_provider', () => ({
+vi.mock('../../utils/ai_provider', () => ({
   generateAiResponse: vi.fn()
 }));
 
-// Mock Prisma
-vi.mock('../../utils/db', () => {
-    return {
-        default: {
-            user: { findUnique: vi.fn().mockResolvedValue({ id: 'test-user-id', baseCurrency: 'USD', monthlyIncome: 5000 }) },
-            transaction: { findMany: vi.fn().mockResolvedValue([]) },
-            budget: { findMany: vi.fn().mockResolvedValue([]) },
-            goal: { findMany: vi.fn().mockResolvedValue([]) },
-            plannedEvent: { findMany: vi.fn().mockResolvedValue([]) },
-            chatMessage: {
-                findMany: vi.fn().mockResolvedValue([]),
-                createMany: vi.fn().mockResolvedValue({ count: 2 })
-            }
-        }
-    }
-});
-
 let app: Express;
+
+beforeAll(async () => {
+    // We are running against real db, make sure a test user exists
+    await prisma.user.upsert({
+        where: { id: 'test-user-id' },
+        update: {},
+        create: {
+            id: 'test-user-id',
+            name: 'Test User',
+            email: 'test@example.com',
+            passwordHash: 'hash',
+            baseCurrency: 'USD',
+            monthlyIncome: 5000
+        }
+    });
+});
 
 beforeEach(() => {
   app = express();
   app.use(express.json());
   app.use('/ai', authMiddleware, aiRouter);
   vi.clearAllMocks();
+});
+
+afterAll(async () => {
+    await prisma.user.delete({ where: { id: 'test-user-id' } });
 });
 
 describe('AI Routes Integration', () => {
