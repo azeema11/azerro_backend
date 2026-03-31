@@ -2,25 +2,30 @@ import prisma from '../utils/db';
 import { convertCurrencyFromDB } from '../utils/currency';
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { HoldingUpdateData, CreateHoldingInput } from '../types/service_types';
-import axios from 'axios';
 
 // Helper function to fetch current price
 export const fetchCurrentPrice = async (ticker: string, assetType: string): Promise<number | null> => {
     try {
         switch (assetType) {
-            case 'STOCK':
-                const stockRes = await axios.get(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${process.env.FINNHUB_API_KEY}`);
-                return stockRes.data.c || null;
-
-            case 'CRYPTO':
-                const cryptoRes = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${ticker.toLowerCase()}&vs_currencies=usd`);
-                return cryptoRes.data[ticker.toLowerCase()]?.usd || null;
-
-            case 'METAL':
-                const metalRes = await axios.get(`https://api.metals.live/v1/spot`);
-                const metalData = metalRes.data.find((item: any) => item[ticker.toLowerCase()]);
+            case 'STOCK': {
+                const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${process.env.FINNHUB_API_KEY}`);
+                if (!response.ok) return null;
+                const data = await response.json();
+                return data.c || null;
+            }
+            case 'CRYPTO': {
+                const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ticker.toLowerCase()}&vs_currencies=usd`);
+                if (!response.ok) return null;
+                const data = await response.json();
+                return data[ticker.toLowerCase()]?.usd || null;
+            }
+            case 'METAL': {
+                const response = await fetch(`https://api.metals.live/v1/spot`);
+                if (!response.ok) return null;
+                const data = await response.json();
+                const metalData = data.find((item: any) => item[ticker.toLowerCase()]);
                 return metalData?.[ticker.toLowerCase()] || null;
-
+            }
             default:
                 return null;
         }

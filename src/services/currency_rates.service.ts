@@ -1,4 +1,3 @@
-import axios from 'axios';
 import prisma from '../utils/db';
 
 type ExchangeRateResponse = {
@@ -15,14 +14,21 @@ export async function updateCurrencyRates(base = 'USD') {
         }
 
         console.log(`Fetching currency rates for base: ${base}`);
-        const res = await axios.get<ExchangeRateResponse>(`https://api.fxratesapi.com/latest?base=${base}`);
+        const response = await fetch(`https://api.fxratesapi.com/latest?base=${base}`);
+        
+        if (!response.ok) {
+            console.error(`API request failed with status: ${response.status}`);
+            return await usePreviousDayRates(base);
+        }
 
-        if (!res.data || !res.data.rates) {
+        const data: ExchangeRateResponse = await response.json();
+
+        if (!data || !data.rates) {
             console.error('Invalid API response structure');
             return await usePreviousDayRates(base);
         }
 
-        const rates = res.data.rates;
+        const rates = data.rates;
         console.log(`Found ${Object.keys(rates).length} exchange rates`);
 
         // Get today's date for historical record

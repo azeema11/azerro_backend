@@ -1,11 +1,9 @@
-import axios from 'axios';
 import prisma from '../utils/db';
 import { Holding } from '@prisma/client';
 import { convertCurrencyFromDB } from '../utils/currency';
 
 export const updateHoldingPrices = async () => {
     try {
-        // ✅ Fix: Single query with user data included (no N+1 queries)
         const holdings = await prisma.holding.findMany({
             include: {
                 user: {
@@ -14,12 +12,10 @@ export const updateHoldingPrices = async () => {
             }
         });
 
-        // Group by assetType
         const stocks = holdings.filter(h => h.assetType === 'STOCK');
         const cryptos = holdings.filter(h => h.assetType === 'CRYPTO');
         const metals = holdings.filter(h => h.assetType === 'METAL');
 
-        // Update each group
         await Promise.all([
             updateStockPrices(stocks),
             updateCryptoPrices(cryptos),
@@ -34,14 +30,12 @@ async function updateStockPrices(stocks: (Holding & { user: { baseCurrency: stri
     for (const h of stocks) {
         const symbol = h.ticker;
         try {
-            const res = await axios.get(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`);
-            const price = res.data.c;
+            const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const price = data.c;
 
-            // ✅ Fix: No more N+1 queries, use included user data
             const baseCurrency = h.user.baseCurrency;
-
-            // ✅ Fix: Finnhub returns prices in USD for most stocks
-            // TODO: For non-US stocks, you may need to determine the actual currency
             const converted = await convertCurrencyFromDB(price, 'USD', baseCurrency);
 
             await prisma.holding.update({
@@ -57,20 +51,20 @@ async function updateStockPrices(stocks: (Holding & { user: { baseCurrency: stri
     }
 }
 
-
 async function updateCryptoPrices(cryptos: (Holding & { user: { baseCurrency: string } })[]) {
+    if (cryptos.length === 0) return;
+    
     const ids = cryptos.map(c => c.ticker.toLowerCase()).join('%2C');
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`;
     try {
-        const res = await axios.get(url);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
         for (const h of cryptos) {
-            const price = res.data[h.ticker.toLowerCase()]?.usd;
+            const price = data[h.ticker.toLowerCase()]?.usd;
             if (price) {
-                // ✅ Fix: No more N+1 queries, use included user data
                 const baseCurrency = h.user.baseCurrency;
-
-                // ✅ Fix: CoinGecko returns prices in USD
                 const converted = await convertCurrencyFromDB(price, 'USD', baseCurrency);
 
                 await prisma.holding.update({
@@ -87,20 +81,20 @@ async function updateCryptoPrices(cryptos: (Holding & { user: { baseCurrency: st
     }
 }
 
-
 async function updateMetalPrices(metals: (Holding & { user: { baseCurrency: string } })[]) {
+    if (metals.length === 0) return;
+    
     try {
-        const res = await axios.get(`https://api.metals.live/v1/spot`);
+        const response = await fetch(`https://api.metals.live/v1/spot`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
         for (const h of metals) {
             try {
-                const priceObj = res.data.find((item: any) => item[h.ticker.toLowerCase()]);
+                const priceObj = data.find((item: any) => item[h.ticker.toLowerCase()]);
                 const price = priceObj?.[h.ticker.toLowerCase()];
                 if (price) {
-                    // ✅ Fix: No more N+1 queries, use included user data
                     const baseCurrency = h.user.baseCurrency;
-
-                    // ✅ Fix: metals.live returns prices in USD
                     const converted = await convertCurrencyFromDB(price, 'USD', baseCurrency);
 
                     await prisma.holding.update({

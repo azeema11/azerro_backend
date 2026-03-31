@@ -1,4 +1,3 @@
-import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -8,21 +7,24 @@ const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 // Helper function to make authenticated API calls
 async function apiCall(method: 'GET' | 'POST' | 'PUT' | 'DELETE', endpoint: string, token: string, data?: any) {
     try {
-        const config: any = {
+        const options: RequestInit = {
             method,
-            url: `${BASE_URL}${endpoint}`,
             headers: {
                 'Content-Type': 'application/json',
                 ...(token && { 'Authorization': `Bearer ${token}` })
             }
         };
         if (data) {
-            config.data = data;
+            options.body = JSON.stringify(data);
         }
-        const response = await axios(config);
-        return response.data;
+        const response = await fetch(`${BASE_URL}${endpoint}`, options);
+        const responseData = await response.json();
+        if (!response.ok) {
+            throw new Error(JSON.stringify(responseData));
+        }
+        return responseData;
     } catch (error: any) {
-        console.error(`Error ${method} ${endpoint}:`, error.response?.data || error.message);
+        console.error(`Error ${method} ${endpoint}:`, error.message);
         throw error;
     }
 }
