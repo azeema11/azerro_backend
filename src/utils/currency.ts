@@ -1,5 +1,6 @@
 import { Decimal } from "@prisma/client/runtime";
 import prisma from "./db";
+import redisClient from "./redis";
 import { getHistoricalExchangeRate } from "../services/currency_rates.service";
 
 /**
@@ -14,6 +15,17 @@ export async function convertCurrencyFromDB(
   try {
     if (from === to) return typeof value === 'number' ? value : value.toNumber();
 
+    const numValue = typeof value === 'number' ? value : value.toNumber();
+
+    // Check Redis first
+    const cachedRateStr = await redisClient.get(`rate:${from}:${to}`);
+    if (cachedRateStr) {
+        const cachedRate = parseFloat(cachedRateStr);
+        if (!isNaN(cachedRate)) {
+            return numValue * cachedRate;
+        }
+    }
+
     const rateRecord = await prisma.currencyRate.findUnique({
       where: {
         base_target: { base: from, target: to }
@@ -27,7 +39,6 @@ export async function convertCurrencyFromDB(
       );
     }
 
-    const numValue = typeof value === 'number' ? value : value.toNumber();
     const numRate = typeof rateRecord.rate === 'number' ? rateRecord.rate : rateRecord.rate.toNumber();
     return numValue * numRate;
   } catch (error) {
@@ -146,22 +157,49 @@ export async function batchConvertCurrency(
     }
   }
 
-  // Fetch all required rates in a single query
-  const rateRecords = uniquePairs.size > 0 ? await prisma.currencyRate.findMany({
-    where: {
-      OR: Array.from(uniquePairs).map(pair => {
-        const [base, target] = pair.split('_');
-        return { base, target };
-      })
-    }
-  }) : [];
-
-  // Create a rate lookup map
   const rateMap = new Map<string, number>();
-  for (const record of rateRecords) {
-    const key = `${record.base}_${record.target}`;
-    const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
-    rateMap.set(key, rate);
+
+  if (uniquePairs.size > 0) {
+      const pairsArray = Array.from(uniquePairs);
+      // Try to get all rates from Redis at once
+      const redisKeys = pairsArray.map(pair => {
+          const [base, target] = pair.split('_');
+          return `rate:${base}:${target}`;
+      });
+
+      const cachedRates = await redisClient.mget(redisKeys);
+      const missingPairs = [];
+
+      for (let i = 0; i < pairsArray.length; i++) {
+          const pair = pairsArray[i];
+          const cachedRate = cachedRates[i];
+          if (cachedRate) {
+              const numRate = parseFloat(cachedRate);
+              if (!isNaN(numRate)) {
+                  rateMap.set(pair, numRate);
+                  continue;
+              }
+          }
+          missingPairs.push(pair);
+      }
+
+      // Fetch any missing rates from DB
+      if (missingPairs.length > 0) {
+          const rateRecords = await prisma.currencyRate.findMany({
+            where: {
+              OR: missingPairs.map(pair => {
+                const [base, target] = pair.split('_');
+                return { base, target };
+              })
+            }
+          });
+
+          for (const record of rateRecords) {
+            const key = `${record.base}_${record.target}`;
+            const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+            rateMap.set(key, rate);
+          }
+      }
   }
 
   // Convert all amounts

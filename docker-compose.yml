@@ -23,6 +23,12 @@ services:
     volumes:
       - pgdata-test:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+
   backend:
     build:
       context: .
@@ -35,6 +41,7 @@ services:
       - .env
     depends_on:
       - postgres
+      - redis
 
 volumes:
   pgdata:
