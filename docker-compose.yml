@@ -4,7 +4,7 @@ services:
     container_name: azerro-postgres
     restart: always
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     env_file:
       - .env
     volumes:
@@ -15,7 +15,7 @@ services:
     container_name: azerro-postgres-test
     restart: always
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
@@ -36,7 +36,7 @@ services:
     container_name: azerro-backend
     restart: always
     ports:
-      - "${PORT:-3000}:3000"
+      - "127.0.0.1:${PORT:-3000}:3000"
     env_file:
       - .env
     depends_on:
