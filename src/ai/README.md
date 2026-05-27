@@ -21,6 +21,12 @@ The module supports two AI providers:
 - **Google Gemini** (Primary): Set `GEMINI_API_KEY` in environment
 - **Ollama** (Fallback): Set `OLLAMA_MODEL_ENDPOINT` for local LLM
 
+### Response Caching
+AI responses are cached in Redis using the resilient wrappers from `src/utils/redis.ts`:
+- Cache key: `ai_response:{sha256(prompt)}` with a 3-hour TTL
+- Only non-empty responses are cached to prevent serving blank results
+- Cache lookups and writes use `safeGet`/`safeSetex` — Redis failures are logged but never break the AI flow
+
 ## Architecture & Future Extraction
 
 This module is designed to be potentially extracted into a separate microservice. Currently, it follows a **Shared Database** pattern where it directly accesses the main application's database.
@@ -65,9 +71,10 @@ If you decide to extract this `src/ai` folder into a separate repository/microse
     -   The module imports `prisma` from `../../utils/db`.
     -   **Action:** The new service will need its own Prisma Client installation and a copy of the `schema.prisma` (specifically the `User`, `Transaction`, `Goal`, `PlannedEvent`, and `Budget` models).
 
-2.  **Utilities**
+2.  **Utilities & Redis**
     -   The module imports helper functions from `../../utils/` (e.g., `toNumberSafe`, `withPrismaErrorHandling`, `extractJsonFromText`).
-    -   **Action:** Copy the relevant utility functions to the new service or package them as a shared library.
+    -   The AI provider imports `safeGet` and `safeSetex` from `../../utils/redis.ts` for response caching.
+    -   **Action:** Copy the relevant utility functions and the Redis wrapper to the new service, or package them as a shared library. Ensure `REDIS_URL` is configured in the new service's environment.
 
 3.  **Authentication Middleware**
     -   Controllers use `AuthRequest` from `../../middlewares/auth.middleware`.
@@ -76,13 +83,14 @@ If you decide to extract this `src/ai` folder into a separate repository/microse
 4.  **Environment Variables**
     -   `GEMINI_API_KEY`: For Google Gemini integration.
     -   `OLLAMA_MODEL_ENDPOINT`: For local Ollama fallback.
+    -   `REDIS_URL`: For AI response caching (defaults to `redis://redis:6379`).
     -   **Action:** Ensure these are configured in the new service's environment.
 
 ### Extraction Steps
 
 1.  Create a new Node.js/TypeScript project.
 2.  Copy the contents of `src/ai/` into the new project's source folder.
-3.  Install necessary dependencies (`express`, `prisma`, `@google/generative-ai`, etc.).
+3.  Install necessary dependencies (`express`, `prisma`, `@google/generative-ai`, `ioredis`, etc.).
 4.  Copy `src/utils/db.ts` and `src/utils/utils.ts` (or relevant parts) to the new project.
 5.  Set up the `schema.prisma` file in the new project to match the main application's database schema.
 6.  Update imports in the copied files to point to the local versions of utilities and Prisma.
