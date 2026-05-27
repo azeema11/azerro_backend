@@ -14,6 +14,7 @@ The application has reached **full production readiness** with all core function
 - **Runtime**: Node.js with TypeScript
 - **Framework**: Express.js
 - **Database**: PostgreSQL with Prisma ORM
+- **Caching**: Redis (ioredis) with resilient wrappers ✨ **ENHANCED**
 - **Authentication**: JWT with bcrypt password hashing
 - **Background Jobs**: node-cron scheduling
 - **API Integration**: Axios for external services
@@ -181,6 +182,7 @@ The application has reached **full production readiness** with all core function
 - Automatic conversion between any supported currencies
 - Historical accuracy for all financial reports and analysis
 - Smart fallback to previous day's rates when current updates fail
+- Redis caching with resilient wrappers — cache failures never break conversions ✨ **ENHANCED**
 
 **Currency History Features** ✨ **NEW**:
 - Complete historical exchange rate storage with CurrencyRateHistory table
@@ -437,6 +439,15 @@ GET  /ai/predictive/insights  - AI-powered predictive financial insights
 - ✅ **Error Handling**: Comprehensive error handling across all budget operations
 - ✅ **Type Safety**: Full TypeScript integration with Prisma enums for categories and periods
 
+#### 🆕 Redis Caching Resilience ✨ **LATEST UPDATE**
+- ✅ **Resilient Wrapper Layer**: Centralized safe Redis functions (`safeGet`, `safeSetex`, `safeMget`, `safeBatchSetex`) in `src/utils/redis.ts`
+- ✅ **Graceful Degradation**: All Redis errors are caught internally and treated as cache misses — DB remains the source of truth
+- ✅ **Exchange Rate Caching**: Rates cached in Redis with TTL until UTC midnight; cache failures never abort DB updates
+- ✅ **AI Response Caching**: Only non-empty responses are cached; empty strings no longer pollute the cache
+- ✅ **Batch Operations**: Currency rate writes use pipelined `multi()/exec()` via `safeBatchSetex` for efficiency
+- ✅ **Removed `@types/ioredis`**: ioredis v5 ships its own TypeScript declarations; removed redundant v4 type package
+- ✅ **Test Mock Cleanup**: Deduplicated Redis mock setup; shared mock object now exports safe wrapper stubs
+
 #### 🔧 Technical Improvements
 - ✅ **Code Quality**: Removed non-null assertion operators (!) in favor of explicit checks
 - ✅ **Error Handling**: Standardized error response format across all endpoints
@@ -529,12 +540,13 @@ The application now includes a comprehensive AI module with Google Gemini and Ol
 The application includes production-ready Docker configuration:
 
 **docker-compose.yml**:
-- ✅ **PostgreSQL Service**: postgres:16-alpine with health checks
+- ✅ **PostgreSQL Service**: postgres:17-alpine with health checks
+- ✅ **Redis Service**: redis:7 bound to localhost for secure local development ✨ **NEW**
 - ✅ **Backend Service**: Multi-stage build with optimized production image
 - ✅ **Health Checks**: Both services include health checks for reliability
 - ✅ **Environment Management**: Proper env file integration with defaults
 - ✅ **Volume Persistence**: PostgreSQL data persisted via named volume
-- ✅ **Service Dependencies**: Backend waits for PostgreSQL health before starting
+- ✅ **Service Dependencies**: Backend depends on both PostgreSQL and Redis
 
 **Dockerfile**:
 - ✅ **Multi-stage Build**: Separate build and production stages
@@ -606,7 +618,7 @@ docker-compose down
 | Investment Holdings | ✅ Complete | 100% | Real-time price updates with service layer |
 | Financial Goals | ✅ Complete | 100% | Advanced conflict detection with service layer |
 | Budget Management | ✅ Complete | 100% | Complete budget management system with full CRUD operations and performance analysis |
-| Currency System | ✅ Complete | 100% | Real-time rates with fallbacks |
+| Currency System | ✅ Complete | 100% | Real-time rates with Redis caching and resilient fallbacks |
 | Background Jobs | ✅ Complete | 100% | Automated data updates |
 | Reports & Analytics | ✅ Complete | 100% | 7 comprehensive reports |
 | Service Layer | ✅ Complete | 100% | Full implementation across all modules |
@@ -629,6 +641,7 @@ The application is **production-ready** for core personal finance features:
 ### 🔧 **Deployment Requirements**
 ```env
 DATABASE_URL=postgresql://username:password@host:port/database
+REDIS_URL=redis://redis:6379
 JWT_SECRET=your-secure-jwt-secret
 FINNHUB_API_KEY=your-finnhub-api-key
 PORT=3000
@@ -647,15 +660,16 @@ NODE_ENV=production
 
 ## 🎯 Next Development Phases
 
-### Phase 1: Advanced Features (1-2 weeks)
-- Assistant system implementation
-- Advanced analytics and reporting
-- Budget alerts and notifications
-- Schema-based validation with Zod
+### Phase 1: Advanced Features — ✅ **COMPLETE**
+- ~~Assistant system implementation~~ ✅ Done — 8 AI endpoints (Gemini/Ollama)
+- ~~Advanced analytics and reporting~~ ✅ Done — 7 report endpoints + AI summaries
+- ~~Schema-based validation with Zod~~ ✅ Done — 10 Zod schemas + validate middleware across routes
+- Budget alerts and notifications — 🔄 **NOT YET** (no push/email notification system)
 
-### Phase 2: External Integrations (2-3 weeks)
-- Bank account synchronization
-- Enhanced investment platform integrations
+### Phase 2: External Integrations (Future)
+- Bank account synchronization (Plaid, Yodlee)
+- Enhanced investment platform integrations (beyond Finnhub, CoinGecko, metals.live)
 - Third-party financial service APIs
+- Push notifications for budget overspend alerts
 
 The **Azerro backend** represents a sophisticated, production-ready personal finance platform with comprehensive features, robust service layer architecture, enhanced type safety, and excellent technical implementation. The core functionality is complete and ready for user adoption with a modern, maintainable codebase following industry best practices. 

@@ -1,5 +1,5 @@
 import prisma from '../utils/db';
-import redisClient from '../utils/redis';
+import { safeBatchSetex } from '../utils/redis';
 
 type ExchangeRateResponse = {
     base: string;
@@ -91,12 +91,12 @@ export async function updateCurrencyRates(base = 'USD') {
         tomorrow.setUTCHours(24, 0, 0, 0); // Midnight next day
         const ttlSeconds = Math.max(1, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
 
-        const redisMulti = redisClient.multi();
-        for (const [target, rate] of Object.entries(completeRates)) {
-            // Store cache keys as `rate:{base}:{target}`
-            redisMulti.setex(`rate:${base}:${target}`, ttlSeconds, rate);
-        }
-        await redisMulti.exec();
+        const entries = Object.entries(completeRates).map(([target, rate]) => ({
+            key: `rate:${base}:${target}`,
+            ttl: ttlSeconds,
+            value: rate,
+        }));
+        await safeBatchSetex(entries);
         console.log(`✅ Currency rates cached in Redis for base ${base} (TTL: ${ttlSeconds}s)`);
 
         console.log(`✅ Currency rates updated successfully for base ${base} (current + historical)`);
@@ -191,12 +191,12 @@ async function usePreviousDayRates(base = 'USD') {
         tomorrowTime.setUTCHours(24, 0, 0, 0);
         const ttlSeconds = Math.max(1, Math.floor((tomorrowTime.getTime() - nowTime.getTime()) / 1000));
 
-        const redisMulti = redisClient.multi();
-        for (const prevRate of previousRates) {
-            const rateStr = typeof prevRate.rate === 'number' ? prevRate.rate : prevRate.rate.toNumber();
-            redisMulti.setex(`rate:${prevRate.base}:${prevRate.target}`, ttlSeconds, rateStr);
-        }
-        await redisMulti.exec();
+        const entries = previousRates.map(prevRate => ({
+            key: `rate:${prevRate.base}:${prevRate.target}`,
+            ttl: ttlSeconds,
+            value: typeof prevRate.rate === 'number' ? prevRate.rate : prevRate.rate.toNumber(),
+        }));
+        await safeBatchSetex(entries);
         console.log(`✅ Previous day currency rates cached in Redis for base ${base} (TTL: ${ttlSeconds}s)`);
 
         console.log(`✅ Used previous day's rates (${previousRates.length} rates) from ${mostRecentRateDate.rateDate.toISOString().split('T')[0]} for base ${base}`);

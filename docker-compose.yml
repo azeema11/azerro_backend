@@ -14,8 +14,10 @@ services:
     image: postgres:17-alpine
     container_name: azerro-postgres-test
     restart: always
+    profiles:
+      - test
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password

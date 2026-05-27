@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { callOllama } from "./ollama";
 import crypto from 'crypto';
-import redisClient from "../../utils/redis";
+import { safeGet, safeSetex } from "../../utils/redis";
 
 /**
  * Generates text using either Google Gemini (if API key is present) or local Ollama.
@@ -14,14 +14,10 @@ export async function generateAiResponse(prompt: string): Promise<string> {
     const hash = crypto.createHash('sha256').update(prompt).digest('hex');
     const cacheKey = `ai_response:${hash}`;
 
-    try {
-        const cachedResponse = await redisClient.get(cacheKey);
-        if (cachedResponse) {
-            console.log("Serving AI response from cache.");
-            return cachedResponse;
-        }
-    } catch (err) {
-        console.error("Redis cache get error in generateAiResponse:", err);
+    const cachedResponse = await safeGet(cacheKey);
+    if (cachedResponse) {
+        console.log("Serving AI response from cache.");
+        return cachedResponse;
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -45,11 +41,8 @@ export async function generateAiResponse(prompt: string): Promise<string> {
         responseText = await callOllama(prompt);
     }
 
-    try {
-        // Cache response for 3 hours (10800 seconds)
-        await redisClient.setex(cacheKey, 10800, responseText);
-    } catch (err) {
-        console.error("Redis cache set error in generateAiResponse:", err);
+    if (responseText && responseText.trim()) {
+        await safeSetex(cacheKey, 10800, responseText);
     }
 
     return responseText;

@@ -53,13 +53,15 @@ The Azerro backend follows a **layered architecture pattern** with clear separat
 │         • Transaction Management                    │
 └─────────────────────────────────────────────────────┘
                             │
-┌─────────────────────────────────────────────────────┐
-│                Database Layer                       │
-│               (PostgreSQL)                          │
-│         • Data Persistence                          │
-│         • Relationships                             │
-│         • Constraints                               │
-└─────────────────────────────────────────────────────┘
+              ┌─────────────┴─────────────┐
+              │                           │
+┌─────────────────────────┐  ┌─────────────────────────┐
+│     Cache Layer         │  │     Database Layer       │
+│       (Redis)           │  │     (PostgreSQL)         │
+│  • Exchange Rate Cache  │  │  • Data Persistence      │
+│  • AI Response Cache    │  │  • Relationships         │
+│  • Resilient Wrappers   │  │  • Constraints           │
+└─────────────────────────┘  └─────────────────────────┘
 ```
 
 ## 📁 Project Structure
@@ -71,7 +73,7 @@ src/
 ├── routes/              # API endpoint definitions
 ├── middlewares/         # Request processing middleware
 ├── types/               # TypeScript interfaces and type definitions
-├── utils/               # Utility functions and helpers (async_handler, currency, date, utils, etc.)
+├── utils/               # Utility functions and helpers (async_handler, currency, redis, date, utils, etc.)
 ├── jobs/                # Background job definitions
 ├── scripts/             # Database seeding and maintenance
 ├── ai/                  # AI-powered features module ✨ **NEW**
@@ -150,10 +152,11 @@ sequenceDiagram
 
 1. Load environment variables
 2. Configure Express middleware
-3. Initialize currency rates
-4. Schedule background jobs
-5. Register API routes
-6. Start server on specified port
+3. Connect to Redis (auto-connects via ioredis)
+4. Initialize currency rates (cached in Redis)
+5. Schedule background jobs
+6. Register API routes
+7. Start server on specified port
 
 ### 2. Service Layer Architecture ✨ **NEW**
 
@@ -342,6 +345,11 @@ export const serviceFunction = async (params) => {
   - `toNumber()` - Convert Decimal to number
   - `addDecimal()`, `subtractDecimal()`, `multiplyDecimal()`, `divideDecimal()` - Arithmetic operations
   - `compareDecimal()` - Safe comparison between Decimal and number types
+- **Redis Caching**: Resilient Redis wrapper with graceful degradation (`src/utils/redis.ts`)
+  - `safeGet()` - Cache lookup that returns `null` on Redis failure
+  - `safeSetex()` - Cache write with TTL that silently logs on failure
+  - `safeMget()` - Batch cache lookup that returns `null` array on failure
+  - `safeBatchSetex()` - Pipelined batch writes via `multi()/exec()` with error isolation
 - **Database Connection**: Prisma client management (`src/utils/db.ts`)
 - **Cryptographic**: SHA-256 hashing utilities (`src/utils/sha_256.ts`)
 
@@ -548,9 +556,10 @@ graph TD
 
 **Implementation**: 
 
-- **Current Conversion**: Database-cached current exchange rates
+- **Current Conversion**: Redis-cached current exchange rates with DB fallback
 - **Historical Conversion**: Date-specific exchange rates with smart fallback to closest previous date
 - **Dual Storage**: Both current and historical rates maintained
+- **Redis Caching**: Exchange rates are cached in Redis with TTL expiring at UTC midnight; all Redis operations use resilient wrappers so cache failures are treated as misses and never break conversions
 - **Error Handling**: Clear errors when rates are missing, ensuring data integrity
 
 ### 5. Goal Conflict Detection Flow
@@ -587,9 +596,11 @@ graph TD
 1. Fetch rates from fxratesapi.com
 2. Upsert rates in current rates table (CurrencyRate)
 3. Store rates in historical table (CurrencyRateHistory) with date
-4. Include base currency self-reference (e.g., USD → USD = 1.0)
-5. Fallback to previous day's rates on failure (no hardcoded rates)
-6. Log operation status with detailed information
+4. Cache rates in Redis with TTL until UTC midnight (via `safeBatchSetex`)
+5. Include base currency self-reference (e.g., USD → USD = 1.0)
+6. Fallback to previous day's rates on failure (no hardcoded rates)
+7. Redis failures during caching are logged but never abort the update
+8. Log operation status with detailed information
 
 ### 2. Holdings Price Refresh Job
 
@@ -754,7 +765,29 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 - **Promise.all()**: Parallel processing where possible
 - **Error Boundaries**: Graceful degradation
 
-### 3. Memory Management
+### 3. Redis Caching Layer
+
+**Purpose**: In-memory caching for exchange rates and AI responses to reduce DB load and API latency
+
+**Architecture**: All Redis operations go through resilient wrapper functions in `src/utils/redis.ts` that catch errors internally and degrade gracefully to DB fallbacks:
+
+| Wrapper | Purpose | On Failure |
+|---------|---------|------------|
+| `safeGet(key)` | Single key lookup | Returns `null` (cache miss) |
+| `safeSetex(key, ttl, value)` | Write with TTL | Logs error, continues |
+| `safeMget(keys)` | Batch key lookup | Returns array of `null`s |
+| `safeBatchSetex(entries)` | Pipelined batch write | Logs error, continues |
+
+**What's Cached**:
+- **Exchange Rates**: `rate:{base}:{target}` keys with TTL until UTC midnight
+- **AI Responses**: `ai_response:{sha256}` keys with 3-hour TTL (only non-empty responses)
+
+**Design Principles**:
+- Redis is a **performance optimization**, never a single point of failure
+- All callers import safe wrappers, not the raw `redisClient`
+- DB remains the source of truth; cache failures are invisible to end users
+
+### 4. Memory Management
 
 - **Connection Pooling**: Prisma manages database connections
 - **Graceful Shutdown**: Clean resource cleanup
@@ -766,6 +799,7 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 
 ```env
 DATABASE_URL=postgresql://...
+REDIS_URL=redis://redis:6379
 JWT_SECRET=...
 FINNHUB_API_KEY=...
 GEMINI_API_KEY=...
@@ -783,14 +817,18 @@ The application includes production-ready Docker support:
 ```yaml
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     healthcheck: pg_isready
     volumes: pgdata
 
+  redis:
+    image: redis:7
+    ports: 127.0.0.1:6379:6379
+
   backend:
     build: .
-    depends_on: postgres (healthy)
-    healthcheck: /health endpoint
+    depends_on: postgres, redis
+    env_file: .env
 ```
 
 **Dockerfile** (Multi-stage):

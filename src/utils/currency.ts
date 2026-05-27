@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime";
 import prisma from "./db";
-import redisClient from "./redis";
+import { safeGet, safeMget } from "./redis";
 import { getHistoricalExchangeRate } from "../services/currency_rates.service";
 
 /**
@@ -17,8 +17,7 @@ export async function convertCurrencyFromDB(
 
     const numValue = typeof value === 'number' ? value : value.toNumber();
 
-    // Check Redis first
-    const cachedRateStr = await redisClient.get(`rate:${from}:${to}`);
+    const cachedRateStr = await safeGet(`rate:${from}:${to}`);
     if (cachedRateStr) {
         const cachedRate = parseFloat(cachedRateStr);
         if (!isNaN(cachedRate)) {
@@ -167,7 +166,7 @@ export async function batchConvertCurrency(
           return `rate:${base}:${target}`;
       });
 
-      const cachedRates = await redisClient.mget(redisKeys);
+      const cachedRates = await safeMget(redisKeys);
       const missingPairs = [];
 
       for (let i = 0; i < pairsArray.length; i++) {

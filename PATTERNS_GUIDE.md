@@ -298,7 +298,43 @@ export const calculateBudgetVariance = (
 };
 ```
 
-### **Pattern 5: Error Handling**
+### **Pattern 5: Redis Caching (Resilient Wrapper)**
+All Redis operations use centralized safe wrappers from `src/utils/redis.ts` that catch errors internally:
+
+```typescript
+import { safeGet, safeSetex, safeMget, safeBatchSetex } from '../utils/redis';
+
+// Single key lookup — returns null on Redis failure (treated as cache miss)
+const cached = await safeGet(`rate:${from}:${to}`);
+if (cached) {
+    const rate = parseFloat(cached);
+    if (!isNaN(rate)) return numValue * rate;
+}
+// Falls through to DB lookup...
+
+// Batch lookup — returns array of nulls on failure
+const cachedRates = await safeMget(redisKeys);
+
+// Single write — silently logs on failure
+if (responseText && responseText.trim()) {
+    await safeSetex(cacheKey, 10800, responseText);
+}
+
+// Batch write via pipeline — silently logs on failure
+const entries = rates.map(([target, rate]) => ({
+    key: `rate:${base}:${target}`,
+    ttl: ttlSeconds,
+    value: rate,
+}));
+await safeBatchSetex(entries);
+```
+
+**Key rules**:
+- Never import `redisClient` directly in services/utils — always use `safeGet`, `safeSetex`, `safeMget`, or `safeBatchSetex`
+- Redis is a performance optimization, not a dependency — DB is always the fallback
+- Only cache non-empty, validated data (e.g., skip caching empty AI responses)
+
+### **Pattern 6: Error Handling**
 Consistent error handling across all services:
 
 ```typescript
@@ -356,6 +392,7 @@ import { Prisma } from '@prisma/client';
 // Internal utilities
 import { asyncHandler } from '../utils/async_handler';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { safeGet, safeSetex, safeMget, safeBatchSetex } from '../utils/redis';
 
 // Types
 import { CreateGoalInput } from '../types/service_types';
@@ -466,6 +503,8 @@ When implementing new features, ensure:
 - [ ] **Decimal Types**: Use utility functions for arithmetic, accept both number and Decimal in services ✨ **NEW**
 - [ ] **Financial Calculations**: Convert Decimal to number for math operations, return numbers for business logic ✨ **NEW**
 - [ ] **Currency Conversion**: Use enhanced conversion functions that support Decimal inputs ✨ **NEW**
+- [ ] **Redis Caching**: Use `safeGet`/`safeSetex`/`safeMget`/`safeBatchSetex` wrappers — never import `redisClient` directly in services
+- [ ] **Cache Validation**: Only cache non-empty, validated data; treat Redis failures as cache misses
 - [ ] **Naming**: Follow established conventions
 - [ ] **Imports**: Organize in standard order
 
