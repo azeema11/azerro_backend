@@ -44,7 +44,7 @@ jobs:
             set -e
             cd /home/azeem/azerro-stack
             echo "IMAGE_TAG=${{ github.sha }}" > deploy.env
-            docker compose --env-file deploy.env pull
-            docker compose --env-file deploy.env up -d
+            docker-compose --env-file deploy.env pull
+            docker-compose --env-file deploy.env up -d
             sleep 5
-            docker compose ps --format json | grep -q '"running"' || { echo "Service not running after deploy"; exit 1; }
+            docker-compose ps --format json | grep -q '"running"' || { echo "Service not running after deploy"; exit 1; }
