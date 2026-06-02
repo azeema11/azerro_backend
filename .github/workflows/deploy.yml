@@ -46,6 +46,7 @@ jobs:
             echo "IMAGE_TAG=${{ github.sha }}" > deploy.env
             docker-compose --env-file deploy.env pull
             docker-compose --env-file deploy.env up -d
+            docker image prune -f
             sleep 5
             docker-compose ps
             if docker-compose ps | grep -q "Up"; then
