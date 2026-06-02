@@ -47,4 +47,11 @@ jobs:
             docker-compose --env-file deploy.env pull
             docker-compose --env-file deploy.env up -d
             sleep 5
-            docker-compose ps --format json | grep -q '"running"' || { echo "Service not running after deploy"; exit 1; }
+            docker-compose ps
+            if docker-compose ps | grep -q "Up"; then
+              echo "Deploy successful - services are running"
+            else
+              echo "Deploy FAILED - services not running"
+              docker-compose logs --tail=30
+              exit 1
+            fi
