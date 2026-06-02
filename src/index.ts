@@ -24,6 +24,7 @@ import {
     validationErrorHandler,
     corsErrorHandler
 } from './middlewares/error.middleware';
+import { authRateLimit, aiRateLimit } from './middlewares/rate_limit.middleware';
 
 dotenv.config();
 
@@ -65,7 +66,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // 7. API Routes
-app.use('/auth', authRouter);
+app.use('/auth', authRateLimit, authRouter);
 app.use('/user', authMiddleware, userRouter);
 app.use('/bank-accounts', authMiddleware, bankAccountRouter);
 app.use('/transactions', authMiddleware, transactionRouter);
@@ -74,7 +75,7 @@ app.use('/goals', authMiddleware, goalRouter);
 app.use("/reports", authMiddleware, reportsRouter);
 app.use("/budgets", authMiddleware, budgetRouter);
 app.use("/planned-events", authMiddleware, plannedEventRouter);
-app.use("/ai", authMiddleware, aiRouter);
+app.use("/ai", authMiddleware, aiRateLimit, aiRouter);
 
 // 8. Final error handling middleware (order is important!)
 app.use('*', notFoundHandler);       // Handle 404 errors for undefined routes

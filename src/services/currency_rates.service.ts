@@ -1,5 +1,5 @@
 import prisma from '../utils/db';
-import { safeBatchSetex } from '../utils/redis';
+import { safeGet, safeSetex, safeBatchSetex } from '../utils/redis';
 
 type ExchangeRateResponse = {
     base: string;
@@ -254,66 +254,63 @@ export async function getHistoricalExchangeRate(
     try {
         if (from === to) return 1.0;
 
-        // Normalize date to UTC midnight
         const targetDate = new Date(date);
         targetDate.setUTCHours(0, 0, 0, 0);
 
-        // Helper to extract rate, applying inverse if needed
+        const dateStr = targetDate.toISOString().split('T')[0];
+        const cacheKey = `rate:historical:${from}:${to}:${dateStr}`;
+        const cached = await safeGet(cacheKey);
+        if (cached) {
+            const num = parseFloat(cached);
+            if (!isNaN(num)) return num;
+        }
+
         const calculateRate = (record: { base: string; rate: any }): number => {
             const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
             return record.base === from ? rate : (1 / rate);
         };
 
-        // Try exact date (either direction)
-        let record = await prisma.currencyRateHistory.findFirst({
-            where: {
-                rateDate: targetDate,
-                OR: [
-                    { base: from, target: to },
-                    { base: to, target: from },
-                ],
-            },
-        });
-        if (record) return calculateRate(record);
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const isHistorical = targetDate.getTime() < today.getTime();
+        const ttl = isHistorical
+            ? 604800
+            : Math.max(1, Math.floor(((new Date(today.getTime() + 86400000)).getTime() - Date.now()) / 1000));
 
-        // Try closest previous date (either direction)
+        const cacheAndReturn = async (record: { base: string; rate: any }) => {
+            const rate = calculateRate(record);
+            await safeSetex(cacheKey, ttl, rate);
+            return rate;
+        };
+
+        const pairFilter = {
+            OR: [
+                { base: from, target: to },
+                { base: to, target: from },
+            ],
+        };
+
+        let record = await prisma.currencyRateHistory.findFirst({
+            where: { rateDate: targetDate, ...pairFilter },
+        });
+        if (record) return cacheAndReturn(record);
+
         record = await prisma.currencyRateHistory.findFirst({
-            where: {
-                rateDate: { lte: targetDate },
-                OR: [
-                    { base: from, target: to },
-                    { base: to, target: from },
-                ],
-            },
+            where: { rateDate: { lte: targetDate }, ...pairFilter },
             orderBy: { rateDate: 'desc' },
         });
-        if (record) return calculateRate(record);
+        if (record) return cacheAndReturn(record);
 
-        // Try closest future date (either direction)
         record = await prisma.currencyRateHistory.findFirst({
-            where: {
-                rateDate: { gte: targetDate },
-                OR: [
-                    { base: from, target: to },
-                    { base: to, target: from },
-                ],
-            },
+            where: { rateDate: { gte: targetDate }, ...pairFilter },
             orderBy: { rateDate: 'asc' },
         });
-        if (record) return calculateRate(record);
+        if (record) return cacheAndReturn(record);
 
-        // Fall back to current rates (either direction)
-        const currentRate = await prisma.currencyRate.findFirst({
-            where: {
-                OR: [
-                    { base: from, target: to },
-                    { base: to, target: from },
-                ],
-            },
-        });
+        const currentRate = await prisma.currencyRate.findFirst({ where: pairFilter });
         if (currentRate) {
-            console.log(`Using current rate for ${from} to ${to} (no historical data for ${targetDate.toISOString().split('T')[0]})`);
-            return calculateRate(currentRate);
+            console.log(`Using current rate for ${from} to ${to} (no historical data for ${dateStr})`);
+            return cacheAndReturn(currentRate);
         }
 
         throw new Error(

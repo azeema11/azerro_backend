@@ -1,50 +1,30 @@
 services:
-  postgres:
-    image: postgres:17-alpine
-    container_name: azerro-postgres
-    restart: always
-    ports:
-      - "127.0.0.1:5432:5432"
-    env_file:
-      - .env
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  postgres-test:
-    image: postgres:17-alpine
-    container_name: azerro-postgres-test
-    restart: always
-    profiles:
-      - test
-    ports:
-      - "127.0.0.1:5433:5432"
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: azerro_test
-    volumes:
-      - pgdata-test:/var/lib/postgresql/data
-
   redis:
     image: redis:7
+    container_name: azerro-redis-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data-prod:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: azerro-backend
-    restart: always
+    image: asia-south1-docker.pkg.dev/azerro/azerro/azerro-backend:${IMAGE_TAG}
+    container_name: azerro-backend-prod
+    restart: unless-stopped
     ports:
       - "127.0.0.1:${PORT:-3000}:3000"
     env_file:
       - .env
     depends_on:
-      - postgres
-      - redis
+      redis:
+        condition: service_healthy
 
 volumes:
-  pgdata:
-  pgdata-test:
+  redis-data-prod:

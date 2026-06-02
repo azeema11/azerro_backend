@@ -1,7 +1,6 @@
 import { Periodicity } from "@prisma/client";
 import { getBudgetVsActual, getIncomeVsExpense, getCategoryBreakdown } from "../../services/report.service";
-import { generateAiResponse } from "../utils/ai_provider";
-import { extractJsonFromText } from "../utils/json_extractor";
+import { generateAndParse } from "../utils/ai_provider";
 import prisma from "../../utils/db";
 
 export const summarizeReport = async (userId: string, reportType: string, options: any = {}): Promise<{ success: boolean, answer: any }> => {
@@ -77,53 +76,16 @@ Output Format (Strict JSON):
 }
 `;
 
-        // 3. Generate response
-        try {
-            const responseText = await generateAiResponse(prompt);
-            const parsedResponse = extractJsonFromText(responseText);
+        const errorFallback = { type: "report_summary", title: "Error", summary: "Error generating the report summary.", highlights: [], recommendations: [] };
 
-            if (parsedResponse) {
-                return {
-                    success: true,
-                    answer: parsedResponse,
-                };
-            } else {
-                return {
-                    success: true,
-                    answer: {
-                        type: "report_summary",
-                        title: "Report Summary",
-                        summary: responseText, // Fallback to raw text
-                        highlights: [],
-                        recommendations: []
-                    }
-                };
-            }
-        } catch (error) {
-            console.error("AI Report Summarization Error:", error);
-            return {
-                success: false,
-                answer: {
-                    type: "report_summary",
-                    title: "Error",
-                    summary: "Error generating the report summary.",
-                    highlights: [],
-                    recommendations: []
-                }
-            };
-        }
+        return generateAndParse(
+            prompt,
+            (raw) => ({ type: "report_summary", title: "Report Summary", summary: raw, highlights: [], recommendations: [] }),
+            errorFallback
+        );
 
     } catch (error) {
         console.error("Error in summarizeReport:", error);
-        return {
-            success: false,
-            answer: {
-                type: "report_summary",
-                title: "Error",
-                summary: "Error processing your request.",
-                highlights: [],
-                recommendations: []
-            }
-        };
+        return { success: false, answer: { type: "report_summary", title: "Error", summary: "Error processing your request.", highlights: [], recommendations: [] } };
     }
 };

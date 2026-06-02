@@ -27,6 +27,21 @@ AI responses are cached in Redis using the resilient wrappers from `src/utils/re
 - Only non-empty responses are cached to prevent serving blank results
 - Cache lookups and writes use `safeGet`/`safeSetex` — Redis failures are logged but never break the AI flow
 
+### Response Generation
+All AI services use `generateAndParse()` from `src/ai/utils/ai_provider.ts` as a unified helper:
+- Calls `generateAiResponse()` to get the raw AI text (with SHA-256 cache dedup)
+- Extracts structured JSON via `extractJsonFromText()` from `json_extractor.ts`
+- Applies a text-based fallback function when JSON extraction fails
+- Returns `{ success, answer }` with error fallback on complete failure
+- Context data (budget, transactions) is cached separately using `withCache()` from `src/utils/redis.ts`
+
+### Rate Limiting
+AI endpoints are protected by the rate-limit middleware (`src/middlewares/rate_limit.middleware.ts`):
+- Uses atomic `safeIncrWithTTL()` (Redis Lua script) for reliable counting
+- AI endpoints: 30 requests per 60-second window
+- Auth endpoints: 10 requests per 60-second window
+- Fails open when Redis is unavailable (requests are allowed through)
+
 ## Architecture & Future Extraction
 
 This module is designed to be potentially extracted into a separate microservice. Currently, it follows a **Shared Database** pattern where it directly accesses the main application's database.
@@ -52,14 +67,18 @@ src/ai/
 │   └── predictive.service.ts
 ├── routes/
 │   └── ai.route.ts      # Route definitions
-└── utils/
-    └── ai_provider.ts   # Gemini/Ollama integration
+├── utils/
+│   ├── ai_provider.ts   # Gemini/Ollama integration + generateAndParse helper
+│   └── json_extractor.ts # JSON extraction from AI text responses
+└── tests/
+    ├── unit/             # Unit tests for AI services
+    └── integration/      # Integration tests (fully mocked, no DB required)
 ```
 
 ### Integration Points
 The module is integrated into the main app via:
 - `src/index.ts`: Imports and uses `src/ai/routes/ai.route.ts`.
-- All routes are protected by `authMiddleware`.
+- All routes are protected by `authMiddleware` and rate-limited (30 requests/60s window).
 
 It **does not** import business logic from `src/services/`. It only relies on data access (Prisma) and general utilities.
 
@@ -72,8 +91,9 @@ If you decide to extract this `src/ai` folder into a separate repository/microse
     -   **Action:** The new service will need its own Prisma Client installation and a copy of the `schema.prisma` (specifically the `User`, `Transaction`, `Goal`, `PlannedEvent`, and `Budget` models).
 
 2.  **Utilities & Redis**
-    -   The module imports helper functions from `../../utils/` (e.g., `toNumberSafe`, `withPrismaErrorHandling`, `extractJsonFromText`).
-    -   The AI provider imports `safeGet` and `safeSetex` from `../../utils/redis.ts` for response caching.
+    -   The module imports helper functions from `../../utils/` (e.g., `toNumberSafe`, `withPrismaErrorHandling`).
+    -   The AI provider imports `safeGet`, `safeSetex`, and `withCache` from `../../utils/redis.ts` for response and context caching.
+    -   The AI provider uses `extractJsonFromText` from `./json_extractor.ts` for parsing structured responses.
     -   **Action:** Copy the relevant utility functions and the Redis wrapper to the new service, or package them as a shared library. Ensure `REDIS_URL` is configured in the new service's environment.
 
 3.  **Authentication Middleware**

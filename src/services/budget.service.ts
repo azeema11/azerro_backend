@@ -4,7 +4,12 @@ import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '
 import { CreateBudgetInput, BudgetUpdateData } from '../types/service_types';
 import { getPeriodDates } from "../utils/date";
 import { getTotalConvertedHistorical } from "../utils/currency";
+import { withCache, safeDel } from "../utils/redis";
 import { toNumberSafe } from "../utils/utils";
+
+async function invalidateUserCaches(userId: string) {
+    await safeDel(`budget:performance:${userId}`);
+}
 
 export const createNewBudget = async (userId: string, data: CreateBudgetInput) => {
     // Validation
@@ -36,7 +41,7 @@ export const createNewBudget = async (userId: string, data: CreateBudgetInput) =
     }
 
     return withPrismaErrorHandling(async () => {
-        return await prisma.budget.create({
+        const budget = await prisma.budget.create({
             data: {
                 userId,
                 category: data.category,
@@ -44,6 +49,8 @@ export const createNewBudget = async (userId: string, data: CreateBudgetInput) =
                 period: data.period,
             },
         });
+        await invalidateUserCaches(userId);
+        return budget;
     }, 'Budget');
 };
 
@@ -58,12 +65,14 @@ export const getUserBudgets = async (userId: string) => {
 
 export const updateUserBudget = async (id: string, userId: string, data: BudgetUpdateData) => {
     return withNotFoundHandling(async () => {
-        return await prisma.budget.update({
+        const budget = await prisma.budget.update({
             where: {
                 id_userId: { id, userId }
             },
             data,
         });
+        await invalidateUserCaches(userId);
+        return budget;
     }, 'Budget');
 };
 
@@ -74,7 +83,7 @@ export const deleteUserBudget = async (id: string, userId: string) => {
                 id_userId: { id, userId }
             }
         });
-
+        await invalidateUserCaches(userId);
         return { success: true };
     }, 'Budget');
 };
@@ -89,52 +98,37 @@ export const getUserBudgetPerformance = async (userId: string) => {
             { field: 'userId', validationType: 'business' }
         );
 
-        const budgets = await prisma.budget.findMany({ where: { userId } });
+        return withCache(`budget:performance:${userId}`, 600, async () => {
+            const budgets = await prisma.budget.findMany({ where: { userId } });
 
-        const results = await Promise.all(
-            budgets.map(async (budget) => {
-                const { category, period, amount: budgetAmount } = budget;
+            return Promise.all(
+                budgets.map(async (budget) => {
+                    const { category, period, amount: budgetAmount } = budget;
+                    const dateRange = getPeriodDates(period);
 
-                const dateRange = getPeriodDates(period);
+                    const [transactions, plannedEvents] = await Promise.all([
+                        prisma.transaction.findMany({
+                            where: { userId, type: TransactionType.EXPENSE, category, date: { gte: dateRange.start, lte: dateRange.end } },
+                        }),
+                        prisma.plannedEvent.findMany({
+                            where: { userId, category, targetDate: { gte: dateRange.start, lte: dateRange.end }, completed: false },
+                        }),
+                    ]);
 
-                const [transactions, plannedEvents] = await Promise.all([
-                    prisma.transaction.findMany({
-                        where: {
-                            userId,
-                            type: TransactionType.EXPENSE,
-                            category,
-                            date: { gte: dateRange.start, lte: dateRange.end },
-                        },
-                    }),
-                    prisma.plannedEvent.findMany({
-                        where: {
-                            userId,
-                            category,
-                            targetDate: { gte: dateRange.start, lte: dateRange.end },
-                            completed: false,
-                        },
-                    }),
-                ]);
+                    const totalSpent = await getTotalConvertedHistorical(
+                        [
+                            ...transactions.map(t => ({ amount: t.amount, currency: t.currency, date: t.date })),
+                            ...plannedEvents.map(pe => ({ amount: pe.estimatedCost, currency: pe.currency, date: pe.targetDate })),
+                        ],
+                        user.baseCurrency
+                    );
 
-                const totalSpent = await getTotalConvertedHistorical(
-                    [
-                        ...transactions.map(t => ({ amount: t.amount, currency: t.currency, date: t.date })),
-                        ...plannedEvents.map(pe => ({ amount: pe.estimatedCost, currency: pe.currency, date: pe.targetDate })),
-                    ],
-                    user.baseCurrency
-                );
-
-                return {
-                    category,
-                    period,
-                    budgetAmount,
-                    actualSpending: totalSpent,
-                    currency: user.baseCurrency,
-                    withinBudget: totalSpent <= toNumberSafe(budgetAmount),
-                };
-            })
-        );
-
-        return results;
+                    return {
+                        category, period, budgetAmount, actualSpending: totalSpent,
+                        currency: user.baseCurrency, withinBudget: totalSpent <= toNumberSafe(budgetAmount),
+                    };
+                })
+            );
+        });
     }, 'Budget');
 };

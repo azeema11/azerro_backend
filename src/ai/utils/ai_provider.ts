@@ -1,7 +1,13 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { callOllama } from "./ollama";
+import { extractJsonFromText } from "./json_extractor";
 import crypto from 'crypto';
 import { safeGet, safeSetex } from "../../utils/redis";
+
+interface AiResult {
+    success: boolean;
+    answer: any;
+}
 
 /**
  * Generates text using either Google Gemini (if API key is present) or local Ollama.
@@ -46,4 +52,34 @@ export async function generateAiResponse(prompt: string): Promise<string> {
     }
 
     return responseText;
+}
+
+/**
+ * Generates an AI response, extracts JSON, and returns a standardised { success, answer } result.
+ * On parse failure, uses fallbackFn to build a best-effort answer from the raw text.
+ * Optionally caches the parsed response.
+ */
+export async function generateAndParse(
+    prompt: string,
+    fallbackFn: (rawText: string) => any,
+    errorFallback: any,
+    cacheKey?: string,
+    cacheTtl?: number
+): Promise<AiResult> {
+    try {
+        const responseText = await generateAiResponse(prompt);
+        const parsed = extractJsonFromText(responseText);
+
+        if (parsed) {
+            if (cacheKey && cacheTtl) {
+                await safeSetex(cacheKey, cacheTtl, JSON.stringify(parsed));
+            }
+            return { success: true, answer: parsed };
+        }
+
+        return { success: true, answer: fallbackFn(responseText) };
+    } catch (error) {
+        console.error("AI response error:", error);
+        return { success: false, answer: errorFallback };
+    }
 }

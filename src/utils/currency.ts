@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime";
 import prisma from "./db";
-import { safeGet, safeMget } from "./redis";
+import { safeGet, safeMget, safeSetex } from "./redis";
 import { getHistoricalExchangeRate } from "../services/currency_rates.service";
 
 /**
@@ -39,6 +39,7 @@ export async function convertCurrencyFromDB(
     }
 
     const numRate = typeof rateRecord.rate === 'number' ? rateRecord.rate : rateRecord.rate.toNumber();
+    await safeSetex(`rate:${from}:${to}`, 86400, numRate);
     return numValue * numRate;
   } catch (error) {
     if (error instanceof Error && error.message.includes('Missing current exchange rate')) {

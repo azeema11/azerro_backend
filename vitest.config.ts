@@ -6,7 +6,6 @@ export default defineConfig({
     globals: true,
     include: ['**/*.{test,spec}.ts'],
     exclude: ['node_modules', 'dist'],
-    globalSetup: ['./src/tests/setup/global_setup.ts'],
     setupFiles: ['./src/tests/setup/redis_mock.ts'],
     env: {
       JWT_SECRET: 'test-secret'

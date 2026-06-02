@@ -23,6 +23,7 @@ The Azerro backend follows a **layered architecture pattern** with clear separat
 ┌─────────────────────────────────────────────────────┐
 │               Middleware Layer                      │
 │           • Authentication (JWT)                    │
+│           • Rate Limiting (Redis-backed)            │
 │           • Error Handling                          │
 │           • Request Validation                      │
 └─────────────────────────────────────────────────────┘
@@ -76,11 +77,12 @@ src/
 ├── utils/               # Utility functions and helpers (async_handler, currency, redis, date, utils, etc.)
 ├── jobs/                # Background job definitions
 ├── scripts/             # Database seeding and maintenance
-├── ai/                  # AI-powered features module ✨ **NEW**
+├── ai/                  # AI-powered features module
 │   ├── controllers/     # AI endpoint handlers
 │   ├── services/        # AI business logic (Gemini/Ollama integration)
 │   ├── routes/          # AI route definitions
-│   └── utils/           # AI provider utilities
+│   ├── utils/           # AI provider, JSON extractor, generateAndParse
+│   └── tests/           # Unit and integration tests (fully mocked)
 ├── validations/         # Zod validation schemas
 └── tests/               # Unit and integration tests
 ```
@@ -349,7 +351,14 @@ export const serviceFunction = async (params) => {
   - `safeGet()` - Cache lookup that returns `null` on Redis failure
   - `safeSetex()` - Cache write with TTL that silently logs on failure
   - `safeMget()` - Batch cache lookup that returns `null` array on failure
-  - `safeBatchSetex()` - Pipelined batch writes via `multi()/exec()` with error isolation
+  - `safeBatchSetex()` - Pipelined batch writes via non-atomic pipeline with error isolation
+  - `safeDel()` - Cache key deletion with error isolation
+  - `safeIncrWithTTL()` - Atomic INCR + conditional EXPIRE via Lua script (used by rate limiter)
+  - `withCache()` - Cache-aside helper: checks cache, falls through to `fn()` on miss, caches result as JSON; safely handles corrupted cache data
+- **Price Utilities**: Shared metal spot price fetching (`src/utils/price.ts`)
+  - `getMetalSpotPrices()` - Fetches and caches metal spot prices (shared between holding.service and price.service)
+  - `findMetalPrice()` - Looks up a specific metal's price from spot data
+- **Goal Progress**: `calcGoalProgress()` - Reusable progress percentage formula (`src/utils/utils.ts`)
 - **Database Connection**: Prisma client management (`src/utils/db.ts`)
 - **Cryptographic**: SHA-256 hashing utilities (`src/utils/sha_256.ts`)
 
@@ -777,10 +786,19 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 | `safeSetex(key, ttl, value)` | Write with TTL | Logs error, continues |
 | `safeMget(keys)` | Batch key lookup | Returns array of `null`s |
 | `safeBatchSetex(entries)` | Pipelined batch write | Logs error, continues |
+| `safeDel(...keys)` | Delete cache keys | Logs error, continues |
+| `safeIncrWithTTL(key, ttl)` | Atomic increment + TTL (Lua) | Returns `null` (fail-open) |
+| `withCache(key, ttl, fn)` | Cache-aside JSON helper | Falls through to `fn()` on miss or corrupted data |
 
 **What's Cached**:
 - **Exchange Rates**: `rate:{base}:{target}` keys with TTL until UTC midnight
 - **AI Responses**: `ai_response:{sha256}` keys with 3-hour TTL (only non-empty responses)
+- **Report Aggregations**: `report:{type}:{userId}:...` keys with 10-minute TTL
+- **Budget Performance**: `budget:performance:{userId}` with 10-minute TTL
+- **User Profiles**: `user:profile:{userId}` with 1-hour TTL
+- **Goal Conflicts**: `goal:conflicts:{userId}` with 10-minute TTL
+- **AI Context Data**: `ai:budget-context:{userId}`, `ai:txn-context:{userId}` with 5-minute TTL
+- **Asset Prices**: `price:{type}:{ticker}` with 30-minute TTL (stocks/crypto) or 6-hour TTL (metals)
 
 **Design Principles**:
 - Redis is a **performance optimization**, never a single point of failure
@@ -808,48 +826,96 @@ PORT=3000
 NODE_ENV=production
 ```
 
-### Docker Configuration ✨ **NEW**
+### Testing Strategy
 
-The application includes production-ready Docker support:
+All tests (unit and integration) are **fully mocked** — no test database or external services required:
+- **Database**: Prisma client is mocked via Vitest module mocks
+- **Redis**: All safe wrappers are mocked in `src/tests/setup/redis_mock.ts`
+- **AI Provider**: `generateAiResponse` and `generateAndParse` are mocked per test
+- **Auth Middleware**: Injected via Express middleware in integration tests
 
-**docker-compose.yml**:
+```bash
+npx vitest run          # Run all tests
+npx vitest run --watch  # Watch mode
+```
+
+Tests can run without any Docker services since all dependencies are mocked. For manual/exploratory testing against real services, use the local compose file:
+
+```bash
+docker compose -f docker-compose_local.yml up -d   # Start Postgres + Redis
+npm run dev                                          # Start dev server
+```
+
+### Docker Configuration
+
+The application uses **two Docker Compose files** for different environments:
+
+**`docker-compose.yml`** — Production (used on the VM, pulled by CI/CD):
+
+```yaml
+services:
+  redis:
+    image: redis:7
+    volumes: redis-data
+    command: redis-server --appendonly yes
+
+  backend:
+    image: asia-south1-docker.pkg.dev/.../azerro-backend:latest
+    depends_on: redis
+    env_file: .env
+```
+
+**`docker-compose_local.yml`** — Local development & testing:
 
 ```yaml
 services:
   postgres:
     image: postgres:17-alpine
-    healthcheck: pg_isready
+    ports: 127.0.0.1:5432:5432
+    env_file: .env
     volumes: pgdata
 
   redis:
     image: redis:7
     ports: 127.0.0.1:6379:6379
+    volumes: redis-data
+    command: redis-server --appendonly yes
 
   backend:
     build: .
-    depends_on: postgres, redis
+    depends_on: [postgres, redis]
     env_file: .env
+```
+
+**Usage**:
+
+```bash
+# Local development — spins up Postgres, Redis, and builds backend from source
+docker compose -f docker-compose_local.yml up -d
+
+# Production — pulls pre-built image, only Redis (Postgres is external/managed)
+docker compose up -d
 ```
 
 **Dockerfile** (Multi-stage):
 
 ```dockerfile
-# Build stage - compile TypeScript
-FROM node:20-alpine AS build
+# Build stage — compile TypeScript
+FROM node:20-slim AS build
 RUN npm ci && npx prisma generate && npm run build
 
-# Production stage - minimal image
-FROM node:20-alpine AS production
-RUN npm ci --only=production
-CMD ["node", "dist/index.js"]
+# Production stage — minimal image
+FROM node:20-slim AS production
+RUN npm ci --omit=dev && npx prisma generate
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
 ```
 
 ### Production Considerations
 
-- **Process Management**: Docker containers with health checks
-- **Database Migrations**: Automated via Prisma
+- **Process Management**: Docker containers with auto-restart
+- **Database Migrations**: Automated via `prisma migrate deploy` on container start
+- **CI/CD**: GitHub Actions builds and pushes to Artifact Registry, then deploys to VM
 - **Logging**: Structured logging for production debugging
-- **Health Checks**: /health endpoint for container orchestration
 
 ## 🔄 Development Workflow
 

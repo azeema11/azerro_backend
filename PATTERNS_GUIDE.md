@@ -302,37 +302,54 @@ export const calculateBudgetVariance = (
 All Redis operations use centralized safe wrappers from `src/utils/redis.ts` that catch errors internally:
 
 ```typescript
-import { safeGet, safeSetex, safeMget, safeBatchSetex } from '../utils/redis';
+import { safeGet, safeSetex, withCache, safeDel } from '../utils/redis';
 
-// Single key lookup — returns null on Redis failure (treated as cache miss)
+// Cache-aside pattern using withCache helper (preferred for JSON data)
+return withCache(`report:expense:${userId}:${startKey}:${endKey}`, 600, async () => {
+    // This only runs on cache miss — result is automatically cached as JSON
+    const data = await prisma.transaction.findMany({ ... });
+    return processedResult;
+});
+
+// Manual cache for non-JSON values (e.g., raw numbers, strings)
 const cached = await safeGet(`rate:${from}:${to}`);
 if (cached) {
     const rate = parseFloat(cached);
     if (!isNaN(rate)) return numValue * rate;
 }
-// Falls through to DB lookup...
 
-// Batch lookup — returns array of nulls on failure
-const cachedRates = await safeMget(redisKeys);
+// Cache invalidation — always after successful DB write, never before
+const budget = await prisma.budget.create({ data: { ... } });
+await safeDel(`budget:performance:${userId}`);  // Only on success
+return budget;
 
-// Single write — silently logs on failure
-if (responseText && responseText.trim()) {
-    await safeSetex(cacheKey, 10800, responseText);
-}
-
-// Batch write via pipeline — silently logs on failure
-const entries = rates.map(([target, rate]) => ({
-    key: `rate:${base}:${target}`,
-    ttl: ttlSeconds,
-    value: rate,
-}));
-await safeBatchSetex(entries);
+// Atomic rate limiting with Lua script
+import { safeIncrWithTTL } from '../utils/redis';
+const count = await safeIncrWithTTL(key, windowSeconds); // null = Redis down, fail-open
 ```
 
 **Key rules**:
-- Never import `redisClient` directly in services/utils — always use `safeGet`, `safeSetex`, `safeMget`, or `safeBatchSetex`
+- Use `withCache` for the common get-or-compute pattern — it handles JSON parse/stringify and corrupted cache data
+- Never import `redisClient` directly in services — always use safe wrappers
 - Redis is a performance optimization, not a dependency — DB is always the fallback
 - Only cache non-empty, validated data (e.g., skip caching empty AI responses)
+- **Invalidate after DB success, never before** — prevents stale cache on DB failure
+
+### **Pattern 5b: AI Response Handling**
+All AI services use `generateAndParse` from `src/ai/utils/ai_provider.ts` for consistent response handling:
+
+```typescript
+import { generateAndParse } from '../utils/ai_provider';
+
+// Generates AI response, extracts JSON, returns { success, answer }
+return generateAndParse(
+    prompt,
+    (rawText) => ({ type: "chat", message: rawText, action: null }),  // fallback on parse failure
+    { type: "chat", message: "Error processing request.", action: null },  // error fallback
+    cacheKey,   // optional: cache parsed response
+    3600        // optional: cache TTL
+);
+```
 
 ### **Pattern 6: Error Handling**
 Consistent error handling across all services:
@@ -503,8 +520,11 @@ When implementing new features, ensure:
 - [ ] **Decimal Types**: Use utility functions for arithmetic, accept both number and Decimal in services ✨ **NEW**
 - [ ] **Financial Calculations**: Convert Decimal to number for math operations, return numbers for business logic ✨ **NEW**
 - [ ] **Currency Conversion**: Use enhanced conversion functions that support Decimal inputs ✨ **NEW**
-- [ ] **Redis Caching**: Use `safeGet`/`safeSetex`/`safeMget`/`safeBatchSetex` wrappers — never import `redisClient` directly in services
+- [ ] **Redis Caching**: Use `withCache` for JSON cache-aside; use `safeGet`/`safeSetex`/`safeMget`/`safeBatchSetex` for raw values — never import `redisClient` directly in services
+- [ ] **Cache Invalidation**: Always call `safeDel()` *after* a successful DB mutation, never before
 - [ ] **Cache Validation**: Only cache non-empty, validated data; treat Redis failures as cache misses
+- [ ] **Rate Limiting**: Use `safeIncrWithTTL()` for atomic increment + TTL — fail-open on Redis failure
+- [ ] **AI Responses**: Use `generateAndParse()` from `ai_provider.ts` for consistent response handling with caching
 - [ ] **Naming**: Follow established conventions
 - [ ] **Imports**: Organize in standard order
 

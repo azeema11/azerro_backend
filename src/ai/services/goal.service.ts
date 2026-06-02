@@ -1,8 +1,7 @@
 import prisma from "../../utils/db";
-import { generateAiResponse } from "../utils/ai_provider";
+import { generateAndParse } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
 import { ResolveGoalConflictInput } from "../../types/service_types";
-import { extractJsonFromText } from "../utils/json_extractor";
 
 export const resolveGoalConflict = async ({
     userId,
@@ -95,47 +94,16 @@ User's Latest Input: "${userMessage}"
 Response (JSON):
 `;
 
-        try {
-            const responseText = await generateAiResponse(fullPrompt);
-            const parsedResponse = extractJsonFromText(responseText);
+        const errorFallback = { type: "goal_conflict", message: "Error processing your request.", proposal: null };
 
-            if (parsedResponse) {
-                return {
-                    success: true,
-                    answer: parsedResponse,
-                };
-            } else {
-                 return {
-                    success: true,
-                    answer: {
-                        type: "goal_conflict",
-                        message: responseText,
-                        proposal: null
-                    }
-                };
-            }
-        } catch (error) {
-            console.error("Failed to parse AI response as JSON:", error);
-            // Fallback for chat-only response
-            return {
-                success: false,
-                answer: {
-                    type: "goal_conflict",
-                    message: "Error processing your request.",
-                    proposal: null
-                }
-            };
-        }
+        return generateAndParse(
+            fullPrompt,
+            (raw) => ({ type: "goal_conflict", message: raw, proposal: null }),
+            errorFallback
+        );
 
     } catch (error) {
         console.error("Error in resolveGoalConflict:", error);
-        return {
-            success: false,
-            answer: {
-                type: "goal_conflict",
-                message: "Error processing your request.",
-                proposal: null
-            }
-        };
+        return { success: false, answer: { type: "goal_conflict", message: "Error processing your request.", proposal: null } };
     }
 };

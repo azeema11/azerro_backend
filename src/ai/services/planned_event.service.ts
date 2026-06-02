@@ -1,7 +1,6 @@
 import prisma from "../../utils/db";
-import { generateAiResponse } from "../utils/ai_provider";
+import { generateAndParse } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
-import { extractJsonFromText } from "../utils/json_extractor";
 
 export const analyzePlannedEventsImpact = async (userId: string): Promise<{ success: boolean, answer: any }> => {
     try {
@@ -71,52 +70,19 @@ Output Format (Strict JSON):
 }
 `;
 
-        try {
-            const responseText = await generateAiResponse(prompt);
-            const parsedResponse = extractJsonFromText(responseText);
+        const errorFallback = {
+            type: "event_impact_analysis", monthlySavingsRequiredForEvents: 0,
+            impactOnGoals: "Error analyzing impact.", impactOnIncome: "Error analyzing impact.", recommendations: []
+        };
 
-            if (parsedResponse) {
-                return {
-                    success: true,
-                    answer: parsedResponse,
-                };
-            } else {
-                 return {
-                    success: true,
-                    answer: {
-                        type: "event_impact_analysis",
-                        monthlySavingsRequiredForEvents: 0,
-                        impactOnGoals: "Unable to parse precise impact.",
-                        impactOnIncome: responseText, // Fallback
-                        recommendations: []
-                    }
-                };
-            }
-        } catch (error) {
-            console.error("AI Planned Event Impact Analysis Error:", error);
-            return {
-                success: false,
-                answer: {
-                    type: "event_impact_analysis",
-                    monthlySavingsRequiredForEvents: 0,
-                    impactOnGoals: "Error analyzing impact.",
-                    impactOnIncome: "Error analyzing impact.",
-                    recommendations: []
-                }
-            };
-        }
+        return generateAndParse(
+            prompt,
+            (raw) => ({ type: "event_impact_analysis", monthlySavingsRequiredForEvents: 0, impactOnGoals: "Unable to parse precise impact.", impactOnIncome: raw, recommendations: [] }),
+            errorFallback
+        );
 
     } catch (error) {
         console.error("Error in analyzePlannedEventsImpact:", error);
-        return {
-            success: false,
-            answer: {
-                type: "event_impact_analysis",
-                monthlySavingsRequiredForEvents: 0,
-                impactOnGoals: "Error processing request.",
-                impactOnIncome: "Error processing request.",
-                recommendations: []
-            }
-        };
+        return { success: false, answer: { type: "event_impact_analysis", monthlySavingsRequiredForEvents: 0, impactOnGoals: "Error processing request.", impactOnIncome: "Error processing request.", recommendations: [] } };
     }
 };

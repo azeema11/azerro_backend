@@ -3,7 +3,12 @@ import prisma from "../utils/db";
 import { convertCurrencyFromDB } from "../utils/currency";
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { GoalUpdateData, CreateGoalInput } from '../types/service_types';
-import { toNumberSafe, subtractDecimal } from '../utils/utils';
+import { withCache, safeDel } from '../utils/redis';
+import { toNumberSafe, subtractDecimal, calcGoalProgress } from '../utils/utils';
+
+async function invalidateGoalCaches(userId: string) {
+    await safeDel(`goal:conflicts:${userId}`);
+}
 
 export const getGoals = async (userId: string) => {
     return withPrismaErrorHandling(async () => {
@@ -13,9 +18,7 @@ export const getGoals = async (userId: string) => {
 
         const goalsWithProgress = goals.map(goal => ({
             ...goal,
-            progress: toNumberSafe(goal.targetAmount) === 0
-                ? 0
-                : Math.min(100, (toNumberSafe(goal.savedAmount) / toNumberSafe(goal.targetAmount)) * 100)
+            progress: calcGoalProgress(goal.savedAmount, goal.targetAmount)
         }));
 
         return goalsWithProgress;
@@ -65,7 +68,6 @@ export const createGoal = async (
 
     // Database operation with Prisma error handling
     return withPrismaErrorHandling(async () => {
-        // Get user's base currency
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { baseCurrency: true }
@@ -73,7 +75,7 @@ export const createGoal = async (
 
         const currency = user?.baseCurrency ?? 'INR';
 
-        return await prisma.goal.create({
+        const goal = await prisma.goal.create({
             data: {
                 userId,
                 name: data.name.trim(),
@@ -84,17 +86,21 @@ export const createGoal = async (
                 targetDate: new Date(data.targetDate)
             }
         });
+        await invalidateGoalCaches(userId);
+        return goal;
     }, 'Goal');
 };
 
 export const updateGoal = async (id: string, userId: string, data: GoalUpdateData) => {
     return withNotFoundHandling(async () => {
-        return await prisma.goal.update({
+        const goal = await prisma.goal.update({
             where: {
                 id_userId: { id, userId }
             },
             data
         });
+        await invalidateGoalCaches(userId);
+        return goal;
     }, 'Goal');
 };
 
@@ -105,6 +111,7 @@ export const deleteGoal = async (id: string, userId: string) => {
                 id_userId: { id, userId }
             }
         });
+        await invalidateGoalCaches(userId);
     }, 'Goal');
 };
 
@@ -131,9 +138,7 @@ export const getGoalById = async (id: string, userId: string) => {
         throw new Error('Goal not found');
     }
 
-    const targetAmount = toNumberSafe(goal.targetAmount);
-    const progress = targetAmount === 0 ? 0 : Math.min(100, (toNumberSafe(goal.savedAmount) / targetAmount) * 100);
-    return { ...goal, progress };
+    return { ...goal, progress: calcGoalProgress(goal.savedAmount, goal.targetAmount) };
 };
 
 export const contributeToGoal = async (id: string, userId: string, amount: number) => {
@@ -178,9 +183,8 @@ export const contributeToGoal = async (id: string, userId: string, amount: numbe
             }
         });
 
-        const targetAmount = toNumberSafe(goal.targetAmount);
-        const progress = targetAmount === 0 ? 0 : Math.min(100, (toNumberSafe(goal.savedAmount) / targetAmount) * 100);
-        return { ...goal, progress };
+        await invalidateGoalCaches(userId);
+        return { ...goal, progress: calcGoalProgress(goal.savedAmount, goal.targetAmount) };
     }, 'Goal');
 };
 
@@ -189,90 +193,54 @@ export async function checkGoalConflicts(userId: string) {
         const user = await prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new Error('User not found');
 
-        const goals = await prisma.goal.findMany({
-            where: { userId, completed: false }
-        });
+        return withCache(`goal:conflicts:${userId}`, 600, async () => {
+            const goals = await prisma.goal.findMany({ where: { userId, completed: false } });
+            const events = await prisma.plannedEvent.findMany({ where: { userId, completed: false } });
 
-        const events = await prisma.plannedEvent.findMany({
-            where: { userId, completed: false }
-        });
+            const now = new Date();
+            let totalRequired = 0;
+            const detailed = [];
 
-        const now = new Date();
-        let totalRequired = 0;
-        const detailed = [];
-
-        // --- Goals ---
-        for (const g of goals) {
-            const monthsLeft = monthsBetween(now, g.targetDate);
-            const amountLeft = toNumberSafe(subtractDecimal(g.targetAmount, g.savedAmount));
-            const perMonthInGoalCurrency = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
-
-            // Convert to user's base currency
-            const perMonth = await convertCurrencyFromDB(
-                perMonthInGoalCurrency,
-                g.currency,
-                user.baseCurrency
-            );
-
-            totalRequired += perMonth;
-
-            detailed.push({
-                type: "GOAL",
-                id: g.id,
-                name: g.name,
-                perMonth: parseFloat(perMonth.toFixed(2)),
-                monthsLeft,
-                originalCurrency: g.currency,
-                targetDate: g.targetDate,
-            });
-        }
-
-        // --- Planned Events ---
-        for (const e of events) {
-            let perMonthInEventCurrency = 0;
-
-            if (e.recurrence === "ONE_TIME") {
-                const monthsLeft = monthsBetween(now, e.targetDate);
-                const amountLeft = toNumberSafe(subtractDecimal(e.estimatedCost, e.savedSoFar));
-                perMonthInEventCurrency = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
-            } else {
-                // Recurring → convert to monthly equivalent
-                const factor = recurrenceToMonthlyFactor(e.recurrence);
-                perMonthInEventCurrency = toNumberSafe(e.estimatedCost) * factor;
+            for (const g of goals) {
+                const monthsLeft = monthsBetween(now, g.targetDate);
+                const amountLeft = toNumberSafe(subtractDecimal(g.targetAmount, g.savedAmount));
+                const perMonthInGoalCurrency = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
+                const perMonth = await convertCurrencyFromDB(perMonthInGoalCurrency, g.currency, user.baseCurrency);
+                totalRequired += perMonth;
+                detailed.push({
+                    type: "GOAL", id: g.id, name: g.name, perMonth: parseFloat(perMonth.toFixed(2)),
+                    monthsLeft, originalCurrency: g.currency, targetDate: g.targetDate,
+                });
             }
 
-            // Convert to user's base currency
-            const perMonth = await convertCurrencyFromDB(
-                perMonthInEventCurrency,
-                e.currency,
-                user.baseCurrency
-            );
+            for (const e of events) {
+                let perMonthInEventCurrency = 0;
+                if (e.recurrence === "ONE_TIME") {
+                    const monthsLeft = monthsBetween(now, e.targetDate);
+                    const amountLeft = toNumberSafe(subtractDecimal(e.estimatedCost, e.savedSoFar));
+                    perMonthInEventCurrency = monthsLeft > 0 ? amountLeft / monthsLeft : amountLeft;
+                } else {
+                    perMonthInEventCurrency = toNumberSafe(e.estimatedCost) * recurrenceToMonthlyFactor(e.recurrence);
+                }
+                const perMonth = await convertCurrencyFromDB(perMonthInEventCurrency, e.currency, user.baseCurrency);
+                totalRequired += perMonth;
+                detailed.push({
+                    type: "PLANNED_EVENT", id: e.id, name: e.name, perMonth: parseFloat(perMonth.toFixed(2)),
+                    recurrence: e.recurrence, originalCurrency: e.currency, targetDate: e.targetDate,
+                });
+            }
 
-            totalRequired += perMonth;
+            const conflict = totalRequired > toNumberSafe(user?.monthlyIncome ?? 0);
+            const difference = totalRequired - toNumberSafe(user?.monthlyIncome ?? 0);
 
-            detailed.push({
-                type: "PLANNED_EVENT",
-                id: e.id,
-                name: e.name,
-                perMonth: parseFloat(perMonth.toFixed(2)),
-                recurrence: e.recurrence,
-                originalCurrency: e.currency,
-                targetDate: e.targetDate,
-            });
-        }
-
-        const conflict = totalRequired > toNumberSafe(user?.monthlyIncome ?? 0);
-        const difference = totalRequired - toNumberSafe(user?.monthlyIncome ?? 0);
-
-        return {
-            conflict,
-            totalRequiredPerMonth: parseFloat(totalRequired.toFixed(2)),
-            availableMonthlyIncome: user?.monthlyIncome ?? 0,
-            overBudgetBy: difference > 0 ? parseFloat(difference.toFixed(2)) : null,
-            belowBudgetBy: difference < 0 ? parseFloat(Math.abs(difference).toFixed(2)) : null,
-            currency: user.baseCurrency,
-            breakdown: detailed,
-        };
+            return {
+                conflict, totalRequiredPerMonth: parseFloat(totalRequired.toFixed(2)),
+                availableMonthlyIncome: user?.monthlyIncome ?? 0,
+                overBudgetBy: difference > 0 ? parseFloat(difference.toFixed(2)) : null,
+                belowBudgetBy: difference < 0 ? parseFloat(Math.abs(difference).toFixed(2)) : null,
+                currency: user.baseCurrency, breakdown: detailed,
+            };
+        });
     } catch (error) {
         console.error("Error in checkGoalConflicts:", error);
         throw error;

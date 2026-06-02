@@ -1,87 +1,97 @@
 import request from 'supertest';
 import express, { Express } from 'express';
 import aiRouter from '../../routes/ai.route';
-import { authMiddleware } from '../../../middlewares/auth.middleware';
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import * as aiProvider from '../../utils/ai_provider';
-import prisma from '../../../utils/db';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
-// Mock auth middleware to bypass JWT check for tests
-vi.mock('../../../middlewares/auth.middleware', () => ({
-  authMiddleware: (req: any, res: any, next: any) => {
-    req.userId = 'test-user-id';
-    next();
-  }
+vi.mock('../../../utils/db', () => ({
+    default: {
+        user: {
+            findUnique: vi.fn().mockResolvedValue({
+                id: 'test-user-id',
+                name: 'Test User',
+                email: 'test@example.com',
+                baseCurrency: 'USD',
+                monthlyIncome: 5000
+            }),
+            upsert: vi.fn(),
+            delete: vi.fn(),
+        },
+        chatMessage: {
+            findMany: vi.fn().mockResolvedValue([]),
+            createMany: vi.fn().mockResolvedValue({ count: 2 })
+        },
+        budget: { findMany: vi.fn().mockResolvedValue([]) },
+        goal: { findMany: vi.fn().mockResolvedValue([]) },
+        plannedEvent: { findMany: vi.fn().mockResolvedValue([]) },
+        transaction: { findMany: vi.fn().mockResolvedValue([]) },
+    }
 }));
 
-// Mock the AI provider so we don't make real API calls
+const { mockGenerateAiResponse } = vi.hoisted(() => ({
+    mockGenerateAiResponse: vi.fn()
+}));
 vi.mock('../../utils/ai_provider', () => ({
-  generateAiResponse: vi.fn()
+    generateAiResponse: mockGenerateAiResponse,
+    generateAndParse: async (
+        prompt: string,
+        fallbackFn: (raw: string) => any,
+        errorFallback: any,
+        _cacheKey?: string,
+        _cacheTtl?: number,
+    ) => {
+        try {
+            const text = await mockGenerateAiResponse(prompt);
+            try {
+                const parsed = JSON.parse(text);
+                return { success: true, answer: parsed };
+            } catch {
+                return { success: true, answer: fallbackFn(text) };
+            }
+        } catch {
+            return { success: false, answer: errorFallback };
+        }
+    },
 }));
 
 let app: Express;
 
-beforeAll(async () => {
-    // We are running against real db, make sure a test user exists
-    await prisma.user.upsert({
-        where: { id: 'test-user-id' },
-        update: {},
-        create: {
-            id: 'test-user-id',
-            name: 'Test User',
-            email: 'test@example.com',
-            passwordHash: 'hash',
-            baseCurrency: 'USD',
-            monthlyIncome: 5000
-        }
-    });
-});
-
 beforeEach(() => {
-  app = express();
-  app.use(express.json());
-  app.use('/ai', authMiddleware, aiRouter);
-  vi.clearAllMocks();
-});
-
-afterAll(async () => {
-    await prisma.user.delete({ where: { id: 'test-user-id' } });
+    app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: any) => { req.userId = 'test-user-id'; next(); });
+    app.use('/ai', aiRouter);
+    vi.clearAllMocks();
+    mockGenerateAiResponse.mockReset();
 });
 
 describe('AI Routes Integration', () => {
-  describe('POST /ai/assistant', () => {
-    it('should route intent correctly and return JSON', async () => {
-      // Mock the intent routing response
-      (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
-        intent: "general",
-        confidence: 0.9,
-        extractedParams: {}
-      }));
+    describe('POST /ai/assistant', () => {
+        it('should route intent correctly and return JSON', async () => {
+            mockGenerateAiResponse
+                .mockResolvedValueOnce(JSON.stringify({
+                    intent: 'general', confidence: 0.9, extractedParams: {}
+                }))
+                .mockResolvedValueOnce(JSON.stringify({
+                    type: 'chat', message: 'This is a general response.', action: null
+                }));
 
-      // Mock the actual handler response
-      (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
-        type: "chat",
-        message: "This is a general response.",
-        action: null
-      }));
+            const response = await request(app)
+                .post('/ai/assistant')
+                .send({ message: 'Hello AI' });
 
-      const response = await request(app)
-        .post('/ai/assistant')
-        .send({ message: 'Hello AI' });
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.answer.type).toBe('chat');
+            expect(response.body.answer.message).toBe('This is a general response.');
+        });
 
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.answer.type).toBe('chat');
-      expect(response.body.answer.message).toBe('This is a general response.');
+        it('should validate request body with Zod', async () => {
+            const response = await request(app)
+                .post('/ai/assistant')
+                .send({});
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBe('Validation failed');
+        });
     });
-
-    it('should validate request body with Zod', async () => {
-      const response = await request(app)
-        .post('/ai/assistant')
-        .send({}); // Missing message
-
-      expect(response.status).toBe(400);
-      expect(response.body.error).toBe('Validation failed');
-    });
-  });
 });

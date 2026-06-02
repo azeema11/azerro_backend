@@ -1,6 +1,16 @@
 import prisma from '../utils/db';
 import { Holding } from '@prisma/client';
+import { safeGet, safeSetex } from '../utils/redis';
 import { convertCurrencyFromDB } from '../utils/currency';
+import { getMetalSpotPrices, findMetalPrice } from '../utils/price';
+
+async function updateHoldingPrice(h: Holding & { user: { baseCurrency: string } }, price: number) {
+    const converted = await convertCurrencyFromDB(price, 'USD', h.user.baseCurrency);
+    await prisma.holding.update({
+        where: { id: h.id },
+        data: { lastPrice: price, convertedValue: converted },
+    });
+}
 
 export const updateHoldingPrices = async () => {
     try {
@@ -30,21 +40,24 @@ async function updateStockPrices(stocks: (Holding & { user: { baseCurrency: stri
     for (const h of stocks) {
         const symbol = h.ticker;
         try {
-            const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const price = data.c;
+            let price: number | undefined;
+            const cacheKey = `price:stock:${symbol.toLowerCase()}`;
+            const cached = await safeGet(cacheKey);
+            if (cached) {
+                const num = parseFloat(cached);
+                if (!isNaN(num)) price = num;
+            }
 
-            const baseCurrency = h.user.baseCurrency;
-            const converted = await convertCurrencyFromDB(price, 'USD', baseCurrency);
+            if (price === undefined) {
+                const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${process.env.FINNHUB_API_KEY}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                price = data.c;
+                if (price !== undefined) await safeSetex(cacheKey, 1800, price);
+            }
 
-            await prisma.holding.update({
-                where: { id: h.id },
-                data: {
-                    lastPrice: price,
-                    convertedValue: converted,
-                },
-            });
+            if (price === undefined) continue;
+            await updateHoldingPrice(h, price);
         } catch (e) {
             console.warn(`[Stock] Failed to update ${symbol}`, e instanceof Error ? e.message : String(e));
         }
@@ -64,16 +77,8 @@ async function updateCryptoPrices(cryptos: (Holding & { user: { baseCurrency: st
         for (const h of cryptos) {
             const price = data[h.ticker.toLowerCase()]?.usd;
             if (price) {
-                const baseCurrency = h.user.baseCurrency;
-                const converted = await convertCurrencyFromDB(price, 'USD', baseCurrency);
-
-                await prisma.holding.update({
-                    where: { id: h.id },
-                    data: {
-                        lastPrice: price,
-                        convertedValue: converted,
-                    },
-                });
+                await safeSetex(`price:crypto:${h.ticker.toLowerCase()}`, 1800, price);
+                await updateHoldingPrice(h, price);
             }
         }
     } catch (e) {
@@ -85,25 +90,15 @@ async function updateMetalPrices(metals: (Holding & { user: { baseCurrency: stri
     if (metals.length === 0) return;
     
     try {
-        const response = await fetch(`https://api.metals.live/v1/spot`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+        const spotData = await getMetalSpotPrices();
+        if (!spotData) throw new Error('Failed to fetch metal spot prices');
 
         for (const h of metals) {
             try {
-                const priceObj = data.find((item: any) => item[h.ticker.toLowerCase()]);
-                const price = priceObj?.[h.ticker.toLowerCase()];
+                const price = findMetalPrice(spotData, h.ticker);
                 if (price) {
-                    const baseCurrency = h.user.baseCurrency;
-                    const converted = await convertCurrencyFromDB(price, 'USD', baseCurrency);
-
-                    await prisma.holding.update({
-                        where: { id: h.id },
-                        data: {
-                            lastPrice: price,
-                            convertedValue: converted,
-                        },
-                    });
+                    await safeSetex(`price:metal:${h.ticker.toLowerCase()}`, 21600, price);
+                    await updateHoldingPrice(h, price);
                 }
             } catch (e) {
                 console.warn(`[Metal] Failed to update ${h.ticker}`, e instanceof Error ? e.message : String(e));

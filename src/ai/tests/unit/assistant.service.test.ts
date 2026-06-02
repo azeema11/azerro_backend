@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { unifiedAssistantQuery } from '../../services/assistant.service';
-import * as aiProvider from '../../utils/ai_provider';
-import prisma from '../../../utils/db';
 
 vi.mock('../../../utils/db', () => ({
     default: {
@@ -22,8 +20,24 @@ vi.mock('../../../utils/db', () => ({
     }
 }));
 
+const { mockGenerateAiResponse } = vi.hoisted(() => ({
+    mockGenerateAiResponse: vi.fn()
+}));
 vi.mock('../../utils/ai_provider', () => ({
-    generateAiResponse: vi.fn()
+    generateAiResponse: mockGenerateAiResponse,
+    generateAndParse: async (
+        prompt: string,
+        fallbackFn: (raw: string) => any,
+        errorFallback: any,
+    ) => {
+        try {
+            const text = await mockGenerateAiResponse(prompt);
+            const parsed = JSON.parse(text);
+            return { success: true, answer: parsed };
+        } catch {
+            return { success: false, answer: errorFallback };
+        }
+    },
 }));
 
 describe('Assistant Service', () => {
@@ -32,19 +46,13 @@ describe('Assistant Service', () => {
     });
 
     it('should handle general intent correctly', async () => {
-        // Mock routing response
-        (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
-            intent: 'general',
-            confidence: 0.9,
-            extractedParams: {}
-        }));
-
-        // Mock chat response
-        (aiProvider.generateAiResponse as any).mockResolvedValueOnce(JSON.stringify({
-            type: 'chat',
-            message: 'Hello, how can I help?',
-            action: null
-        }));
+        mockGenerateAiResponse
+            .mockResolvedValueOnce(JSON.stringify({
+                intent: 'general', confidence: 0.9, extractedParams: {}
+            }))
+            .mockResolvedValueOnce(JSON.stringify({
+                type: 'chat', message: 'Hello, how can I help?', action: null
+            }));
 
         const result = await unifiedAssistantQuery('user1', 'Hello');
 

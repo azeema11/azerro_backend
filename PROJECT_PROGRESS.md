@@ -25,6 +25,7 @@ The application has reached **full production readiness** with all core function
 - **Hot Reload**: ts-node-dev for development
 - **Type Safety**: Full TypeScript coverage
 - **Database Migrations**: Prisma managed
+- **Testing**: Vitest with fully mocked dependencies (Prisma, Redis, AI) — no test database required
 - **Environment Management**: dotenv
 - **Process Management**: Graceful shutdown handling
 
@@ -440,13 +441,35 @@ GET  /ai/predictive/insights  - AI-powered predictive financial insights
 - ✅ **Type Safety**: Full TypeScript integration with Prisma enums for categories and periods
 
 #### 🆕 Redis Caching Resilience ✨ **LATEST UPDATE**
-- ✅ **Resilient Wrapper Layer**: Centralized safe Redis functions (`safeGet`, `safeSetex`, `safeMget`, `safeBatchSetex`) in `src/utils/redis.ts`
+- ✅ **Resilient Wrapper Layer**: Centralized safe Redis functions (`safeGet`, `safeSetex`, `safeMget`, `safeBatchSetex`, `safeDel`, `safeIncrWithTTL`, `withCache`) in `src/utils/redis.ts`
+- ✅ **Generic Cache-Aside Helper**: `withCache<T>()` handles JSON get-or-compute pattern with corrupted-data resilience (bad entries are auto-deleted)
+- ✅ **Atomic Rate Limiting**: `safeIncrWithTTL()` uses a Lua script to atomically INCR + conditional EXPIRE, preventing race conditions in rate-limit counters
 - ✅ **Graceful Degradation**: All Redis errors are caught internally and treated as cache misses — DB remains the source of truth
 - ✅ **Exchange Rate Caching**: Rates cached in Redis with TTL until UTC midnight; cache failures never abort DB updates
 - ✅ **AI Response Caching**: Only non-empty responses are cached; empty strings no longer pollute the cache
-- ✅ **Batch Operations**: Currency rate writes use pipelined `multi()/exec()` via `safeBatchSetex` for efficiency
+- ✅ **Batch Operations**: Currency rate writes use pipelined (non-atomic) `pipeline()/exec()` via `safeBatchSetex` for efficiency
+- ✅ **Cache Invalidation Order**: All `safeDel()` calls occur *after* successful DB writes to prevent stale cache on DB failures
 - ✅ **Removed `@types/ioredis`**: ioredis v5 ships its own TypeScript declarations; removed redundant v4 type package
 - ✅ **Test Mock Cleanup**: Deduplicated Redis mock setup; shared mock object now exports safe wrapper stubs
+
+#### 🆕 Code Refactoring & Deduplication ✨ **LATEST UPDATE**
+- ✅ **Cache-Aside Consolidation**: Extracted `withCache` from repeated cache check boilerplate in 8 report functions, budget performance, user profile, and goal conflicts
+- ✅ **Transaction Summary Merge**: `getExpenseSummary` and `getIncomeSummary` consolidated into a single `getTransactionSummaryByType` helper
+- ✅ **Date Range Validation**: Extracted `validateAndParseOptionalDateRange()` to eliminate repeated date parsing and default-range logic across report functions; cache keys use sanitized date strings
+- ✅ **Goal Progress Formula**: Extracted `calcGoalProgress()` utility, reused in `getGoals`, `getGoalById`, `contributeToGoal`, and `getGoalProgressReport`
+- ✅ **Metal Price Consolidation**: Created `src/utils/price.ts` with `getMetalSpotPrices()` and `findMetalPrice()`, shared by `holding.service.ts` and `price.service.ts`
+- ✅ **Holding Price Update**: Extracted generic `updateHoldingPrice()` helper, reused across `updateStockPrices`, `updateCryptoPrices`, and `updateMetalPrices`
+- ✅ **AI Response Handler**: Created `generateAndParse()` in `ai_provider.ts` — unified generate + JSON extract + fallback pattern, used by all 7 AI service files
+- ✅ **AI Context Caching**: Budget and transaction context data cached using `withCache()` instead of manual cache code
+- ✅ **Corrupted Cache Safety**: `JSON.parse` calls on cached data wrapped in try-catch; corrupted entries deleted and re-fetched
+
+#### 🆕 Test Environment Simplification ✨ **LATEST UPDATE**
+- ✅ **Removed Test Database**: No separate test database required — all tests use mocked Prisma and Redis
+- ✅ **Deleted `global_setup.ts`**: Removed test database setup/teardown lifecycle
+- ✅ **Updated `vitest.config.ts`**: Removed `globalSetup` reference
+- ✅ **Cleaned `.env` and `.env.example`**: Removed `TEST_DATABASE_URL`
+- ✅ **Simplified `db.ts`**: Removed conditional database URL based on `NODE_ENV`
+- ✅ **Restored Integration Tests**: `ai.route.test.ts` restored with fully mocked Prisma, AI provider, and auth middleware — no live services needed
 
 #### 🔧 Technical Improvements
 - ✅ **Code Quality**: Removed non-null assertion operators (!) in favor of explicit checks
@@ -530,41 +553,52 @@ The application now includes a comprehensive AI module with Google Gemini and Ol
 
 **Technical Implementation**:
 - **AI Provider**: Supports Google Gemini API with Ollama fallback
+- **Unified Response Handler**: `generateAndParse()` consolidates generate + JSON extract + fallback logic across all AI services
 - **Architecture**: Modular design for potential microservice extraction
 - **Validation**: Zod schemas for all AI endpoints
 - **Service Layer**: Complete separation of AI business logic
+- **Rate Limiting**: 30 requests per 60-second window via atomic Redis counters
+- **Context Caching**: Budget and transaction context cached with `withCache()` (5-minute TTL)
 
 ## 🐳 Docker & Deployment ✅ **COMPLETE** ✨ **UPDATED**
 
 ### Docker Configuration
-The application includes production-ready Docker configuration:
+The application uses two Docker Compose files for different environments:
 
-**docker-compose.yml**:
-- ✅ **PostgreSQL Service**: postgres:17-alpine with health checks
-- ✅ **Redis Service**: redis:7 bound to localhost for secure local development ✨ **NEW**
-- ✅ **Backend Service**: Multi-stage build with optimized production image
-- ✅ **Health Checks**: Both services include health checks for reliability
-- ✅ **Environment Management**: Proper env file integration with defaults
-- ✅ **Volume Persistence**: PostgreSQL data persisted via named volume
-- ✅ **Service Dependencies**: Backend depends on both PostgreSQL and Redis
+**`docker-compose.yml`** (Production — used on VM, deployed by CI/CD):
+- ✅ **Redis Service**: redis:7 with AOF persistence, bound to localhost
+- ✅ **Backend Service**: Pre-built image from Google Artifact Registry
+- ✅ **Environment Management**: `.env` file integration with port defaults
+- ✅ **Volume Persistence**: Redis data persisted via named volume
+- ✅ **Auto-Restart**: All services configured with `restart: unless-stopped`
+
+**`docker-compose_local.yml`** (Local development & testing):
+- ✅ **PostgreSQL Service**: postgres:17-alpine with persistent volume
+- ✅ **Redis Service**: redis:7 with AOF persistence
+- ✅ **Backend Service**: Built from local Dockerfile (source code)
+- ✅ **Full Stack**: Postgres + Redis + Backend for self-contained local dev
+- ✅ **Port Binding**: All services bound to localhost for security
 
 **Dockerfile**:
 - ✅ **Multi-stage Build**: Separate build and production stages
 - ✅ **Optimized Caching**: Dependencies installed before source code
 - ✅ **Production Ready**: Only production dependencies in final image
-- ✅ **Health Check Support**: wget installed for container health checks
 - ✅ **Prisma Client**: Generated in both build and production stages
+- ✅ **Auto-Migration**: Runs `prisma migrate deploy` on container start
 
 **Running with Docker**:
 ```bash
-# Start all services
-docker-compose up -d
+# Local development (Postgres + Redis + Backend from source)
+docker compose -f docker-compose_local.yml up -d
+
+# Production (Redis + pre-built Backend image)
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 ## 🎯 Features NOT Yet Implemented
@@ -624,7 +658,7 @@ docker-compose down
 | Service Layer | ✅ Complete | 100% | Full implementation across all modules |
 | Planned Events | ✅ Complete | 100% | Full implementation with service layer and API endpoints |
 | AI Module | ✅ Complete | 100% | 8 AI-powered endpoints with Gemini/Ollama ✨ **NEW** |
-| Docker Setup | ✅ Complete | 100% | Multi-stage build, docker-compose ready ✨ **NEW** |
+| Docker Setup | ✅ Complete | 100% | Dual compose files (local + prod), multi-stage Dockerfile, CI/CD deploy |
 
 ## 🚀 Deployment Readiness
 
@@ -644,6 +678,8 @@ DATABASE_URL=postgresql://username:password@host:port/database
 REDIS_URL=redis://redis:6379
 JWT_SECRET=your-secure-jwt-secret
 FINNHUB_API_KEY=your-finnhub-api-key
+GEMINI_API_KEY=your-gemini-api-key
+OLLAMA_MODEL_ENDPOINT=http://localhost:11434
 PORT=3000
 NODE_ENV=production
 ```

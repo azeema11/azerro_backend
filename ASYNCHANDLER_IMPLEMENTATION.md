@@ -103,7 +103,24 @@ export const createGoal = asyncHandler(async (req: AuthRequest, res: Response) =
 - ✅ `assetAllocation` - Investment portfolio allocation analysis
 - ✅ `budgetVsActual` - Budget vs actual spending comparison tracking
 - ✅ `goalProgress` - Financial goals progress tracking
-- ✅ `recurringTransactions` - Detect recurring transaction patterns *(Recently implemented)*
+- ✅ `recurringTransactions` - Detect recurring transaction patterns
+
+### 9. Budget Controller (`src/controllers/budget.controller.ts`)
+- ✅ `createBudget` - Create a new budget
+- ✅ `getUserBudgets` - List user's budgets
+- ✅ `updateBudget` - Update budget details
+- ✅ `deleteBudget` - Remove a budget
+- ✅ `getBudgetPerformance` - Budget vs actual spending performance
+
+### 10. AI Controllers (`src/ai/controllers/`)
+- ✅ `unifiedAssistantQuery` - AI assistant for financial advice
+- ✅ `askTransactionQuestion` - AI-powered transaction Q&A
+- ✅ `resolveGoalConflict` - AI goal conflict resolution
+- ✅ `getBudgetSummary` - AI budget analysis summary
+- ✅ `chatBudgetAdvisor` - AI budget chat advisor
+- ✅ `summarizeReport` - AI report summarization
+- ✅ `getPlannedEventImpact` - AI planned event impact analysis
+- ✅ `getPredictiveInsights` - AI predictive financial insights
 
 ## 🔧 **Error Handling Flow**
 
@@ -149,7 +166,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 Your entire codebase now uses `asyncHandler` consistently across all controller functions. This provides:
 
-- **36 Controller Functions** properly wrapped with asyncHandler (including comprehensive Reports and Planned Events controllers)
+- **49 Controller Functions** properly wrapped with asyncHandler (including Reports, Planned Events, Budget, and AI controllers)
 - **Consistent Error Handling** across all API endpoints
 - **Production-Ready** error responses
 - **Clean, Maintainable Code** structure

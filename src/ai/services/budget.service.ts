@@ -1,7 +1,7 @@
 import prisma from "../../utils/db";
-import { generateAiResponse } from "../utils/ai_provider";
+import { generateAndParse } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
-import { extractJsonFromText } from "../utils/json_extractor";
+import { safeGet, withCache } from "../../utils/redis";
 
 /**
  * Generates a passive budget analysis summary for the user.
@@ -15,6 +15,10 @@ export const getBudgetAnalysis = async (userId: string): Promise<{ success: bool
         });
 
         if (!user) throw new Error("User not found");
+
+        const cacheKey = `ai:budget-analysis:${userId}`;
+        const cached = await safeGet(cacheKey);
+        if (cached) return { success: true, answer: JSON.parse(cached) };
 
         // 2. Fetch Recent Transactions (Last 30 Days)
         const thirtyDaysAgo = new Date();
@@ -81,50 +85,19 @@ Output Format (Strict JSON):
 }
 `;
 
-        try {
-            const responseText = await generateAiResponse(prompt);
-            const parsedResponse = extractJsonFromText(responseText);
+        const errorFallback = { type: "budget_analysis", status: "Error", insights: [], recommendation: "Error processing your request." };
 
-            if (parsedResponse) {
-                return {
-                    success: true,
-                    answer: parsedResponse,
-                };
-            } else {
-                return {
-                    success: true,
-                    answer: {
-                        type: "budget_analysis",
-                        status: "Unknown",
-                        insights: [],
-                        recommendation: responseText // Fallback
-                    }
-                };
-            }
-        } catch (error) {
-            console.error("AI Budget Analysis Error:", error);
-            return {
-                success: false,
-                answer: {
-                    type: "budget_analysis",
-                    status: "Error",
-                    insights: [],
-                    recommendation: "Error processing your request."
-                }
-            };
-        }
+        return generateAndParse(
+            prompt,
+            (raw) => ({ type: "budget_analysis", status: "Unknown", insights: [], recommendation: raw }),
+            errorFallback,
+            cacheKey,
+            3600
+        );
 
     } catch (error) {
         console.error("Error in getBudgetAnalysis:", error);
-        return {
-            success: false,
-            answer: {
-                type: "budget_analysis",
-                status: "Error",
-                insights: [],
-                recommendation: "Error processing your request."
-            }
-        };
+        return { success: false, answer: { type: "budget_analysis", status: "Error", insights: [], recommendation: "Error processing your request." } };
     }
 };
 
@@ -133,35 +106,35 @@ Output Format (Strict JSON):
  */
 export const chatBudgetAdvisor = async (userId: string, message: string, history: { role: string, content: string }[] = []): Promise<{ success: boolean, answer: any }> => {
     try {
-        // Fetch context (similar to above, but maybe less aggregated to allow deeper questions)
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { baseCurrency: true }
+        const context = await withCache(`ai:budget-context:${userId}`, 300, async () => {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { baseCurrency: true }
+            });
+
+            const sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+            const transactions = await prisma.transaction.findMany({
+                where: { userId, date: { gte: sixtyDaysAgo } },
+                orderBy: { date: 'desc' },
+                take: 50
+            });
+
+            const budgets = await prisma.budget.findMany({ where: { userId } });
+
+            return {
+                currency: user?.baseCurrency,
+                transactions: transactions.map(t => ({
+                    date: t.date.toISOString().split('T')[0],
+                    amount: toNumberSafe(t.amount),
+                    cat: t.category,
+                    type: t.type,
+                    desc: t.description
+                })),
+                budgets: budgets.map(b => ({ cat: b.category, amt: toNumberSafe(b.amount), period: b.period }))
+            };
         });
-
-        // Fetch recent transactions (last 60 days for broader context in chat)
-        const sixtyDaysAgo = new Date();
-        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-
-        const transactions = await prisma.transaction.findMany({
-            where: { userId, date: { gte: sixtyDaysAgo } },
-            orderBy: { date: 'desc' },
-            take: 50 // Limit to last 50 for prompt size
-        });
-
-        const budgets = await prisma.budget.findMany({ where: { userId } });
-
-        const context = {
-            currency: user?.baseCurrency,
-            transactions: transactions.map(t => ({
-                date: t.date.toISOString().split('T')[0],
-                amount: toNumberSafe(t.amount),
-                cat: t.category,
-                type: t.type,
-                desc: t.description
-            })),
-            budgets: budgets.map(b => ({ cat: b.category, amt: toNumberSafe(b.amount), period: b.period }))
-        };
 
         const systemPrompt = `
 You are the Budget Advisor Chatbot.
@@ -194,46 +167,15 @@ User Question: "${message}"
 Answer (JSON):
 `;
 
-        try {
-            const responseText = await generateAiResponse(fullPrompt);
-            const parsedResponse = extractJsonFromText(responseText);
-
-            if (parsedResponse) {
-                return {
-                    success: true,
-                    answer: parsedResponse,
-                };
-            } else {
-                return {
-                    success: true,
-                    answer: {
-                        type: "chat",
-                        message: responseText,
-                        action: null
-                    }
-                };
-            }
-        } catch (error) {
-            console.error("AI Budget Advisor Error:", error);
-            return {
-                success: false,
-                answer: {
-                    type: "chat",
-                    message: "Error processing your request.",
-                    action: null
-                }
-            };
-        }
+        const chatError = { type: "chat", message: "Error processing your request.", action: null };
+        return generateAndParse(
+            fullPrompt,
+            (raw) => ({ type: "chat", message: raw, action: null }),
+            chatError
+        );
 
     } catch (error) {
         console.error("Error in chatBudgetAdvisor:", error);
-        return {
-            success: false,
-            answer: {
-                type: "chat",
-                message: "Error processing your request.",
-                action: null
-            }
-        };
+        return { success: false, answer: { type: "chat", message: "Error processing your request.", action: null } };
     }
 };

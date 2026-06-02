@@ -1,7 +1,7 @@
 import prisma from "../../utils/db";
-import { generateAiResponse } from "../utils/ai_provider";
-import { extractJsonFromText } from "../utils/json_extractor";
+import { generateAndParse } from "../utils/ai_provider";
 import { toNumberSafe } from "../../utils/utils";
+import { safeGet } from "../../utils/redis";
 import { TransactionType } from "@prisma/client";
 
 export const generatePredictiveInsights = async (userId: string): Promise<{ success: boolean, answer: any }> => {
@@ -12,6 +12,10 @@ export const generatePredictiveInsights = async (userId: string): Promise<{ succ
         });
 
         if (!user) throw new Error("User not found");
+
+        const cacheKey = `ai:predictive:${userId}`;
+        const cached = await safeGet(cacheKey);
+        if (cached) return { success: true, answer: JSON.parse(cached) };
 
         // Fetch last 3 months of transactions for trend analysis
         const threeMonthsAgo = new Date();
@@ -87,48 +91,25 @@ Output Format (Strict JSON):
 }
 `;
 
-        try {
-            const responseText = await generateAiResponse(prompt);
-            const parsedResponse = extractJsonFromText(responseText);
+        const errorFallback = {
+            type: "predictive_insights", savingsForecast: "Error generating forecast.",
+            spendingTrends: "Error analyzing trends.", goalProjections: [], recommendations: []
+        };
 
-            if (parsedResponse) {
-                return { success: true, answer: parsedResponse };
-            } else {
-                 return {
-                    success: true,
-                    answer: {
-                        type: "predictive_insights",
-                        savingsForecast: "Unable to parse forecast.",
-                        spendingTrends: responseText, // Fallback
-                        goalProjections: [],
-                        recommendations: []
-                    }
-                };
-            }
-        } catch (error) {
-            console.error("AI Predictive Insights Error:", error);
-            return {
-                success: false,
-                answer: {
-                    type: "predictive_insights",
-                    savingsForecast: "Error generating forecast.",
-                    spendingTrends: "Error analyzing trends.",
-                    goalProjections: [],
-                    recommendations: []
-                }
-            };
-        }
+        return generateAndParse(
+            prompt,
+            (raw) => ({ type: "predictive_insights", savingsForecast: "Unable to parse forecast.", spendingTrends: raw, goalProjections: [], recommendations: [] }),
+            errorFallback,
+            cacheKey,
+            3600
+        );
 
     } catch (error) {
         console.error("Error in generatePredictiveInsights:", error);
         return {
-            success: false,
-            answer: {
-                type: "predictive_insights",
-                savingsForecast: "Error processing request.",
-                spendingTrends: "Error processing request.",
-                goalProjections: [],
-                recommendations: []
+            success: false, answer: {
+                type: "predictive_insights", savingsForecast: "Error processing request.",
+                spendingTrends: "Error processing request.", goalProjections: [], recommendations: []
             }
         };
     }

@@ -1,34 +1,52 @@
 import prisma from '../utils/db';
+import { safeGet, safeSetex } from '../utils/redis';
 import { convertCurrencyFromDB } from '../utils/currency';
+import { getMetalSpotPrices, findMetalPrice } from '../utils/price';
 import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
 import { HoldingUpdateData, CreateHoldingInput } from '../types/service_types';
 
 // Helper function to fetch current price
 export const fetchCurrentPrice = async (ticker: string, assetType: string): Promise<number | null> => {
     try {
+        const cacheKey = `price:${assetType.toLowerCase()}:${ticker.toLowerCase()}`;
+        const cached = await safeGet(cacheKey);
+        if (cached) {
+            const num = parseFloat(cached);
+            if (!isNaN(num)) return num;
+        }
+
+        let price: number | null = null;
+
         switch (assetType) {
             case 'STOCK': {
                 const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${process.env.FINNHUB_API_KEY}`);
                 if (!response.ok) return null;
                 const data = await response.json();
-                return data.c || null;
+                price = data.c || null;
+                break;
             }
             case 'CRYPTO': {
                 const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ticker.toLowerCase()}&vs_currencies=usd`);
                 if (!response.ok) return null;
                 const data = await response.json();
-                return data[ticker.toLowerCase()]?.usd || null;
+                price = data[ticker.toLowerCase()]?.usd || null;
+                break;
             }
             case 'METAL': {
-                const response = await fetch(`https://api.metals.live/v1/spot`);
-                if (!response.ok) return null;
-                const data = await response.json();
-                const metalData = data.find((item: any) => item[ticker.toLowerCase()]);
-                return metalData?.[ticker.toLowerCase()] || null;
+                const spotData = await getMetalSpotPrices();
+                if (!spotData) return null;
+                price = findMetalPrice(spotData, ticker);
+                break;
             }
             default:
                 return null;
         }
+
+        if (price !== null) {
+            await safeSetex(cacheKey, 1800, price);
+        }
+
+        return price;
     } catch (error) {
         console.warn(`Failed to fetch price for ${ticker}:`, error);
         return null;

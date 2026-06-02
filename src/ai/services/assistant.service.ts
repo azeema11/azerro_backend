@@ -1,4 +1,4 @@
-import { generateAiResponse } from "../utils/ai_provider";
+import { generateAiResponse, generateAndParse } from "../utils/ai_provider";
 import { extractJsonFromText } from "../utils/json_extractor";
 import { askQuestionToTransactionAgent } from "./transaction.service";
 import { resolveGoalConflict } from "./goal.service";
@@ -107,8 +107,7 @@ Output Format (Strict JSON):
 };
 
 const fallbackGeneralQuery = async (userId: string, message: string, historyContext: string): Promise<{ success: boolean, answer: any }> => {
-     // A simple fallback if intent is general or routing fails
-      const prompt = `
+    const prompt = `
 You are Azerro, a helpful personal finance AI.
 Answer the user's general financial question.
 Do not assume specific details about their finances unless they tell you.
@@ -125,15 +124,9 @@ Output Format (Strict JSON):
   "action": null
 }
 `;
-    const responseText = await generateAiResponse(prompt);
-    const parsedResponse = extractJsonFromText(responseText);
-
-    if (parsedResponse) {
-        return { success: true, answer: parsedResponse };
-    } else {
-        return {
-            success: true,
-            answer: { type: "chat", message: responseText, action: null }
-        };
-    }
+    return generateAndParse(
+        prompt,
+        (raw) => ({ type: "chat", message: raw, action: null }),
+        { type: "chat", message: "Error processing your request.", action: null }
+    );
 };

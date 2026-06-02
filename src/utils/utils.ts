@@ -61,3 +61,12 @@ export function compareDecimal(a: number | Prisma.Decimal, b: number | Prisma.De
     const decimalB = toDecimal(b);
     return decimalA.cmp(decimalB);
 }
+
+/**
+ * Calculate goal progress as a percentage (0–100), clamped.
+ */
+export function calcGoalProgress(saved: number | Prisma.Decimal, target: number | Prisma.Decimal): number {
+    const t = toNumberSafe(target);
+    if (t === 0) return 0;
+    return Math.min(100, (toNumberSafe(saved) / t) * 100);
+}
