@@ -43,8 +43,8 @@ jobs:
           script: |
             set -e
             cd /home/azeem/azerro-stack
-            sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${{ github.sha }}/" .env
-            docker compose pull
-            docker compose up -d
+            echo "IMAGE_TAG=${{ github.sha }}" > deploy.env
+            docker compose --env-file deploy.env pull
+            docker compose --env-file deploy.env up -d
             sleep 5
             docker compose ps --format json | grep -q '"running"' || { echo "Service not running after deploy"; exit 1; }
