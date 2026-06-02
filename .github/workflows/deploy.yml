@@ -42,7 +42,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             set -e
-            cd ~/azerro-stack
+            cd /home/azeem/azerro-stack
             sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${{ github.sha }}/" .env
             docker compose pull
             docker compose up -d
