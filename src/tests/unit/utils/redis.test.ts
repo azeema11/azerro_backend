@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { mockGet, mockSetex, mockMget, mockPipeline, mockPipelineSetex, mockPipelineExec } = vi.hoisted(() => {
     const mockPipelineSetex = vi.fn().mockReturnThis();
@@ -37,12 +37,19 @@ vi.mock('../../../utils/redis', async (importOriginal) => {
 import { safeGet, safeSetex, safeMget, safeBatchSetex } from '../../../utils/redis';
 
 describe('Redis Resilient Wrappers', () => {
+    let consoleErrorSpy: any;
+
     beforeEach(() => {
         vi.clearAllMocks();
         mockPipeline.mockImplementation(() => ({
             setex: mockPipelineSetex,
             exec: mockPipelineExec,
         }));
+        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        consoleErrorSpy.mockRestore();
     });
 
     describe('safeGet', () => {
