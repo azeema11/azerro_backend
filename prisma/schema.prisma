@@ -246,8 +246,13 @@ model ChatMessage {
   userId    String
   role      String   @db.VarChar(10) // "user" or "ai"
   content   String   @db.Text
-  intent    String?  @db.VarChar(50) // e.g., "budget", "transaction", "general"
+  intent    String?  @db.VarChar(50) // e.g., "budget", "transaction", "general", "agent"
+  sessionId String?  @db.VarChar(100) // groups messages in a conversation session
+  toolCalls Json?    // tools the agent invoked during this turn
+  actions   Json?    // write actions executed (create_transaction, update_goal, etc.)
+  metadata  Json?    // flexible: model name, token count, latency, etc.
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([userId, sessionId])
 }

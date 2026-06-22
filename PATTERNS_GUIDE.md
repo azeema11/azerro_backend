@@ -335,20 +335,46 @@ const count = await safeIncrWithTTL(key, windowSeconds); // null = Redis down, f
 - Only cache non-empty, validated data (e.g., skip caching empty AI responses)
 - **Invalidate after DB success, never before** — prevents stale cache on DB failure
 
-### **Pattern 5b: AI Response Handling**
-All AI services use `generateAndParse` from `src/ai/utils/ai_provider.ts` for consistent response handling:
+### **Pattern 5b: AI Assistant Tools (Google ADK)**
+AI tools use `FunctionTool` from `@google/adk` with Zod schemas and `withCache` for data retrieval:
 
 ```typescript
-import { generateAndParse } from '../utils/ai_provider';
+import { FunctionTool, Context } from "@google/adk";
+import { z } from "zod";
+import { withCache } from "../../../utils/redis";
 
-// Generates AI response, extracts JSON, returns { success, answer }
-return generateAndParse(
-    prompt,
-    (rawText) => ({ type: "chat", message: rawText, action: null }),  // fallback on parse failure
-    { type: "chat", message: "Error processing request.", action: null },  // error fallback
-    cacheKey,   // optional: cache parsed response
-    3600        // optional: cache TTL
-);
+export const getTransactionsTool = new FunctionTool({
+    name: "get_transactions",
+    description: "Fetches the user's transactions with optional filters.",
+    parameters: z.object({
+        category: z.enum(CATEGORIES).optional(),
+        startDate: z.string().optional(),
+        limit: z.number().optional(),
+    }),
+    execute: async (input, ctx) => {
+        const userId = ctx?.state.get<string>("temp:userId")!;
+        return withCache(`adk:txn:${userId}:...`, 300, async () => {
+            const transactions = await prisma.transaction.findMany({ where: { userId }, ... });
+            return transactions.map(t => ({ ... }));
+        });
+    },
+});
+```
+
+Action tools follow the same pattern but invalidate caches after writes:
+
+```typescript
+export const createTransactionTool = new FunctionTool({
+    name: "create_transaction",
+    description: "Creates a transaction. ONLY call AFTER user confirms.",
+    parameters: z.object({ amount: z.number(), category: z.enum(CATEGORIES), ... }),
+    execute: async (input, ctx) => {
+        const userId = ctx?.state.get<string>("temp:userId")!;
+        const txn = await prisma.transaction.create({ data: { userId, ...input } });
+        await safeDel(`adk:txn:${userId}:all:all:50`);
+        return { status: "success", transactionId: txn.id };
+    },
+});
 ```
 
 ### **Pattern 6: Error Handling**
@@ -524,7 +550,7 @@ When implementing new features, ensure:
 - [ ] **Cache Invalidation**: Always call `safeDel()` *after* a successful DB mutation, never before
 - [ ] **Cache Validation**: Only cache non-empty, validated data; treat Redis failures as cache misses
 - [ ] **Rate Limiting**: Use `safeIncrWithTTL()` for atomic increment + TTL — fail-open on Redis failure
-- [ ] **AI Responses**: Use `generateAndParse()` from `ai_provider.ts` for consistent response handling with caching
+- [ ] **AI Tools**: Use `FunctionTool` with Zod schemas; wrap data reads in `withCache`; invalidate caches after writes with `safeDel`
 - [ ] **Naming**: Follow established conventions
 - [ ] **Imports**: Organize in standard order
 

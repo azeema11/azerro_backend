@@ -1,88 +1,74 @@
+import { Category, Periodicity } from "@prisma/client";
 import prisma from "../../utils/db";
-import { generateAndParse } from "../utils/ai_provider";
-import { toNumberSafe } from "../../utils/utils";
 
-export const analyzePlannedEventsImpact = async (userId: string): Promise<{ success: boolean, answer: any }> => {
-    try {
-        // 1. Fetch User Data (Income and Base Currency)
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { baseCurrency: true, monthlyIncome: true }
-        });
+export async function getPlannedEvents(userId: string, includeCompleted = false) {
+    const where: Record<string, unknown> = { userId };
+    if (!includeCompleted) where.completed = false;
 
-        if (!user) throw new Error("User not found");
-
-        // 2. Fetch Active Planned Events
-        const events = await prisma.plannedEvent.findMany({
-            where: { userId, completed: false },
-            orderBy: { targetDate: 'asc' }
-        });
-
-        // 3. Fetch Active Goals
-        const goals = await prisma.goal.findMany({
-            where: { userId, completed: false },
-            orderBy: { targetDate: 'asc' }
-        });
-
-        // 4. Summarize Data for AI
-        const income = toNumberSafe(user.monthlyIncome || 0);
-        const baseCurrency = user.baseCurrency;
-
-        const eventSummary = events.map(e => ({
-            name: e.name,
-            cost: toNumberSafe(e.estimatedCost),
-            date: e.targetDate.toISOString().split('T')[0]
-        }));
-
-        const goalSummary = goals.map(g => ({
-            name: g.name,
-            targetAmount: toNumberSafe(g.targetAmount),
-            savedAmount: toNumberSafe(g.savedAmount),
-            remaining: toNumberSafe(g.targetAmount) - toNumberSafe(g.savedAmount),
-            date: g.targetDate.toISOString().split('T')[0]
-        }));
-
-        // 5. Build Prompt
-        const prompt = `
-You are an expert financial advisor AI for Azerro.
-The user wants an analysis of the impact of their "Planned Events" on their budget and existing goals.
-
-Data Context:
-- Base Currency: ${baseCurrency}
-- Monthly Income: ${income}
-- Planned Events (Upcoming Expenses): ${JSON.stringify(eventSummary)}
-- Active Savings Goals: ${JSON.stringify(goalSummary)}
-
-Your Task:
-Analyze how the upcoming planned events will impact the user's cash flow, savings, and ability to reach their goals on time.
-Calculate and provide an estimate of the extra monthly savings required to meet these upcoming planned event costs on top of their goals.
-
-Output Format (Strict JSON):
-{
-  "type": "event_impact_analysis",
-  "monthlySavingsRequiredForEvents": number,
-  "impactOnGoals": "A concise paragraph explaining if the events put any goals at risk.",
-  "impactOnIncome": "A concise paragraph explaining the proportion of income needed.",
-  "recommendations": [
-    "String recommendation 1",
-    "String recommendation 2"
-  ]
+    return prisma.plannedEvent.findMany({ where });
 }
-`;
 
-        const errorFallback = {
-            type: "event_impact_analysis", monthlySavingsRequiredForEvents: 0,
-            impactOnGoals: "Error analyzing impact.", impactOnIncome: "Error analyzing impact.", recommendations: []
-        };
+export interface CreatePlannedEventData {
+    name: string;
+    estimatedCost: number;
+    targetDate: string;
+    category: string;
+    recurrence?: string;
+    currency?: string;
+}
 
-        return generateAndParse(
-            prompt,
-            (raw) => ({ type: "event_impact_analysis", monthlySavingsRequiredForEvents: 0, impactOnGoals: "Unable to parse precise impact.", impactOnIncome: raw, recommendations: [] }),
-            errorFallback
-        );
+export async function createPlannedEvent(userId: string, data: CreatePlannedEventData) {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { baseCurrency: true },
+    });
 
-    } catch (error) {
-        console.error("Error in analyzePlannedEventsImpact:", error);
-        return { success: false, answer: { type: "event_impact_analysis", monthlySavingsRequiredForEvents: 0, impactOnGoals: "Error processing request.", impactOnIncome: "Error processing request.", recommendations: [] } };
-    }
-};
+    return prisma.plannedEvent.create({
+        data: {
+            userId,
+            name: data.name,
+            estimatedCost: data.estimatedCost,
+            currency: data.currency || user?.baseCurrency || "USD",
+            targetDate: new Date(data.targetDate),
+            category: data.category as Category,
+            recurrence: (data.recurrence as Periodicity) || Periodicity.ONE_TIME,
+            savedSoFar: 0,
+        },
+    });
+}
+
+export interface UpdatePlannedEventData {
+    name?: string;
+    estimatedCost?: number;
+    targetDate?: string;
+    savedSoFar?: number;
+    completed?: boolean;
+}
+
+/**
+ * Returns the original event (for name reference) and the updated record,
+ * or null if the event was not found or no fields to update.
+ */
+export async function updatePlannedEvent(userId: string, eventId: string, data: UpdatePlannedEventData) {
+    const event = await prisma.plannedEvent.findFirst({
+        where: { id: eventId, userId },
+    });
+
+    if (!event) return null;
+
+    const updateData: Record<string, unknown> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.estimatedCost !== undefined) updateData.estimatedCost = data.estimatedCost;
+    if (data.targetDate !== undefined) updateData.targetDate = new Date(data.targetDate);
+    if (data.savedSoFar !== undefined) updateData.savedSoFar = data.savedSoFar;
+    if (data.completed !== undefined) updateData.completed = data.completed;
+
+    if (Object.keys(updateData).length === 0) return null;
+
+    const updated = await prisma.plannedEvent.update({
+        where: { id: eventId },
+        data: updateData,
+    });
+
+    return { original: event, updated };
+}

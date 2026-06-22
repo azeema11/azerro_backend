@@ -1,109 +1,73 @@
 import prisma from "../../utils/db";
-import { generateAndParse } from "../utils/ai_provider";
-import { toNumberSafe } from "../../utils/utils";
-import { ResolveGoalConflictInput } from "../../types/service_types";
 
-export const resolveGoalConflict = async ({
-    userId,
-    conflictingGoal,
-    userMessage,
-    history = []
-}: ResolveGoalConflictInput): Promise<{ success: boolean, answer: any }> => {
-    try {
-        // 1. Fetch User Context (Income & Base Currency)
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { baseCurrency: true, monthlyIncome: true }
-        });
+export async function getGoals(userId: string, includeCompleted = false) {
+    const where: Record<string, unknown> = { userId };
+    if (!includeCompleted) where.completed = false;
 
-        if (!user) throw new Error("User not found");
-
-        // 2. Fetch Existing Active Goals
-        const goals = await prisma.goal.findMany({
-            where: { userId, completed: false }
-        });
-
-        // 3. Fetch Planned Events
-        const events = await prisma.plannedEvent.findMany({
-            where: { userId, completed: false }
-        });
-
-        // 4. Construct Context Summary
-        const income = toNumberSafe(user.monthlyIncome || 0);
-        const baseCurrency = user.baseCurrency;
-
-        const goalSummary = goals.map(g => ({
-            id: g.id,
-            name: g.name,
-            targetAmount: toNumberSafe(g.targetAmount),
-            savedAmount: toNumberSafe(g.savedAmount),
-            remaining: toNumberSafe(g.targetAmount) - toNumberSafe(g.savedAmount),
-            date: g.targetDate.toISOString().split('T')[0]
-        }));
-
-        const eventSummary = events.map(e => ({
-            name: e.name,
-            cost: toNumberSafe(e.estimatedCost),
-            date: e.targetDate.toISOString().split('T')[0]
-        }));
-
-        // 5. Build Prompt
-        const systemPrompt = `
-You are a financial conflict resolver AI for Azerro.
-The user wants to add a NEW GOAL but it conflicts with their budget or existing goals.
-
-User's Financial Context:
-- Monthly Income: ${income} ${baseCurrency}
-- Existing Goals: ${JSON.stringify(goalSummary)}
-- Planned Events: ${JSON.stringify(eventSummary)}
-
-The NEW Goal causing conflict:
-${JSON.stringify(conflictingGoal)}
-
-Your Task:
-1. Analyze the situation.
-2. Suggest solutions (e.g., extend the date of the new goal, reduce the amount, or prioritize/delay other goals).
-3. If you suggest a solution in the text (like moving a deadline or reducing an amount), you MUST provide the corresponding actionable update in the "proposal" field.
-4. Calculate specific adjustments (e.g. specific new dates). Do not be vague (e.g. "adjust savings"). If you say "delay for 6 months", calculate the exact new date.
-5. In the "message", always refer to goals by their NAME, never by their ID.
-
-Output Format (Strict JSON):
-{
-  "type": "goal_conflict",
-  "message": "Your helpful response to the user...",
-  "proposal": null | { "id": "string", "goalName": "string", "targetAmount"?: number, "targetDate"?: "YYYY-MM-DD" }
+    return prisma.goal.findMany({ where });
 }
 
-Important:
-- Output ONLY valid JSON.
-- In "proposal", ONLY include fields that need to be changed. For example, if you are only extending the deadline, provide "targetDate" and OMIT "targetAmount".
-- Do NOT change the target amount unless the solution specifically requires reducing the goal's total cost.
-- Be concise and empathetic.
-`;
+export interface CreateGoalData {
+    name: string;
+    targetAmount: number;
+    targetDate: string;
+    description?: string;
+    currency?: string;
+}
 
-        const conversationHistory = history.map(h => `${h.role === 'user' ? 'User' : 'AI'}: ${h.content}`).join('\n');
+export async function createGoal(userId: string, data: CreateGoalData) {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { baseCurrency: true },
+    });
 
-        const fullPrompt = `
-${systemPrompt}
+    return prisma.goal.create({
+        data: {
+            userId,
+            name: data.name,
+            targetAmount: data.targetAmount,
+            savedAmount: 0,
+            currency: data.currency || user?.baseCurrency || "USD",
+            targetDate: new Date(data.targetDate),
+            description: data.description || null,
+        },
+    });
+}
 
-Conversation History:
-${conversationHistory}
+export interface UpdateGoalData {
+    targetAmount?: number;
+    targetDate?: string;
+    savedAmount?: number;
+    completed?: boolean;
+    name?: string;
+    description?: string;
+}
 
-User's Latest Input: "${userMessage}"
+/**
+ * Returns the original goal (for name reference) and the updated record,
+ * or null if the goal was not found or no fields to update.
+ */
+export async function updateGoal(userId: string, goalId: string, data: UpdateGoalData) {
+    const goal = await prisma.goal.findFirst({
+        where: { id: goalId, userId },
+    });
 
-Response (JSON):
-`;
+    if (!goal) return null;
 
-        const errorFallback = { type: "goal_conflict", message: "Error processing your request.", proposal: null };
+    const updateData: Record<string, unknown> = {};
+    if (data.targetAmount !== undefined) updateData.targetAmount = data.targetAmount;
+    if (data.targetDate !== undefined) updateData.targetDate = new Date(data.targetDate);
+    if (data.savedAmount !== undefined) updateData.savedAmount = data.savedAmount;
+    if (data.completed !== undefined) updateData.completed = data.completed;
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
 
-        return generateAndParse(
-            fullPrompt,
-            (raw) => ({ type: "goal_conflict", message: raw, proposal: null }),
-            errorFallback
-        );
+    if (Object.keys(updateData).length === 0) return null;
 
-    } catch (error) {
-        console.error("Error in resolveGoalConflict:", error);
-        return { success: false, answer: { type: "goal_conflict", message: "Error processing your request.", proposal: null } };
-    }
-};
+    const updated = await prisma.goal.update({
+        where: { id: goalId },
+        data: updateData,
+    });
+
+    return { original: goal, updated };
+}

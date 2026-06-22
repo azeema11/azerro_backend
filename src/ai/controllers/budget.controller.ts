@@ -1,28 +1,50 @@
-import { Response } from 'express';
-import { getBudgetAnalysis, chatBudgetAdvisor } from '../services/budget.service';
-import { asyncHandler } from '../../utils/async_handler';
-import { AuthRequest } from '../../middlewares/auth.middleware';
+import { Category } from "@prisma/client";
+import { getBudgets, upsertBudget } from "../services/budget.service";
+import { withCache, safeDel } from "../../utils/redis";
+import { toNumberSafe } from "../../utils/utils";
 
-export const getBudgetSummaryController = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+export async function handleGetBudgets(userId: string, category?: string) {
+    const cat = category || "all";
+    return withCache(`adk:budgets:${userId}:${cat}`, 180, async () => {
+        const budgets = await getBudgets(userId, category as Category);
+
+        return budgets.map((b) => ({
+            id: b.id,
+            category: b.category,
+            budgetAmount: toNumberSafe(b.amount),
+            period: b.period,
+        }));
+    });
+}
+
+export async function handleCreateBudget(
+    userId: string,
+    input: {
+        category: string;
+        amount: number;
+        period: string;
+    }
+) {
+    const { action } = await upsertBudget(userId, {
+        category: input.category,
+        amount: input.amount,
+        period: input.period,
+    });
+
+    await safeDel(`adk:budgets:${userId}:all`);
+    await safeDel(`adk:budgets:${userId}:${input.category}`);
+
+    if (action === "updated") {
+        return {
+            status: "success",
+            message: `Budget for ${input.category} (${input.period}) updated to ${input.amount}.`,
+            action: "updated",
+        };
     }
 
-    const result = await getBudgetAnalysis(req.userId);
-    res.json(result);
-});
-
-export const chatBudgetAdvisorController = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { message, history } = req.body;
-
-    if (!message) {
-        return res.status(400).json({ error: 'Message is required.' });
-    }
-
-    const response = await chatBudgetAdvisor(req.userId, message, history);
-    res.json({ message: response });
-});
+    return {
+        status: "success",
+        message: `Budget created: ${input.amount} ${input.period} for ${input.category}.`,
+        action: "created",
+    };
+}

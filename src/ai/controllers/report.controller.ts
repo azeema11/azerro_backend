@@ -1,20 +1,31 @@
-import { Request, Response } from "express";
-import { summarizeReport } from "../services/report.service";
-import { AuthRequest } from "../../middlewares/auth.middleware";
-import { asyncHandler } from "../../utils/async_handler";
+import { Periodicity } from "@prisma/client";
+import { getBudgetVsActual, getIncomeVsExpense, getCategoryBreakdown } from "../services/report.service";
 
-export const getReportSummary = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.userId;
-    if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+export async function handleGetReport(
+    userId: string,
+    input: {
+        reportType: "budget_vs_actual" | "income_vs_expense" | "category_breakdown";
+        period?: string;
+        date?: string;
+        startDate?: string;
+        endDate?: string;
+    }
+) {
+    if (input.reportType === "budget_vs_actual") {
+        const period = (input.period as Periodicity) || Periodicity.MONTHLY;
+        const date = input.date ? new Date(input.date) : new Date();
+        return await getBudgetVsActual(userId, period, date);
     }
 
-    const { reportType, options } = req.body;
-
-    if (!reportType) {
-        return res.status(400).json({ error: "Missing 'reportType' in request body." });
+    if (input.reportType === "income_vs_expense") {
+        const period = (input.period as Periodicity) || Periodicity.MONTHLY;
+        const date = input.date ? new Date(input.date) : new Date();
+        return await getIncomeVsExpense(userId, period, date);
     }
 
-    const result = await summarizeReport(userId, reportType, options || {});
-    res.status(200).json(result);
-});
+    if (input.reportType === "category_breakdown") {
+        return await getCategoryBreakdown(userId, input.startDate, input.endDate);
+    }
+
+    return { error: "Unknown report type" };
+}

@@ -1,52 +1,73 @@
+import { Category, TransactionType } from "@prisma/client";
 import prisma from "../../utils/db";
-import { toNumberSafe } from "../../utils/utils";
 import { withPrismaErrorHandling } from "../../utils/prisma_errors";
-import { generateAndParse } from "../utils/ai_provider";
-import { withCache } from "../../utils/redis";
 
-export const askQuestionToTransactionAgent = async (userId: string, question: string): Promise<{ success: boolean, answer: any }> => {
-    const transactionContext = await withCache(`ai:txn-context:${userId}`, 300, async () => {
-        const transactions = await withPrismaErrorHandling(async () => {
-            return await prisma.transaction.findMany({
-                where: { userId },
-                select: {
-                    id: true, date: true, amount: true, category: true,
-                    description: true, currency: true, type: true
-                },
-                orderBy: { date: 'desc' }
-            });
-        }, 'Transaction');
-
-        return transactions.map(t => ({
-            id: t.id, date: t.date.toISOString(), amount: toNumberSafe(t.amount),
-            category: t.category, description: t.description || '',
-            currency: t.currency, type: t.type,
-        }));
-    });
-
-    const prompt = `
-You are a financial assistant. 
-You will receive a user's transactions and a question.
-Use ONLY the provided transactions to answer.
-Do not make assumptions or invent numbers.
-If unsure, reply: "I don't have enough data to answer."
-
-Transactions:
-${JSON.stringify(transactionContext, null, 2)}
-
-Question: ${question}
-
-Output Format (Strict JSON):
-{
-  "type": "chat",
-  "message": "Your answer...",
-  "action": null | { "type": "create_transaction", "amount": number, "category": "string", "description": "string" }
+export interface GetTransactionsFilter {
+    category?: Category;
+    type?: TransactionType;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
 }
-`;
 
-    return generateAndParse(
-        prompt,
-        (raw) => ({ type: "chat", message: raw, action: null }),
-        { type: "chat", message: "Error processing your request.", action: null }
+export async function getTransactions(userId: string, filter: GetTransactionsFilter = {}) {
+    const where: Record<string, unknown> = { userId };
+    if (filter.category) where.category = filter.category;
+    if (filter.type) where.type = filter.type;
+
+    if (filter.startDate || filter.endDate) {
+        const dateFilter: Record<string, Date> = {};
+        if (filter.startDate) dateFilter.gte = new Date(filter.startDate);
+        if (filter.endDate) dateFilter.lte = new Date(filter.endDate);
+        where.date = dateFilter;
+    }
+
+    return withPrismaErrorHandling(
+        () =>
+            prisma.transaction.findMany({
+                where,
+                select: {
+                    id: true,
+                    date: true,
+                    amount: true,
+                    category: true,
+                    description: true,
+                    currency: true,
+                    type: true,
+                },
+                orderBy: { date: "desc" },
+                take: filter.limit ?? 50,
+            }),
+        "Transaction",
     );
+}
+
+export interface CreateTransactionData {
+    amount: number;
+    category: string;
+    type: string;
+    description?: string;
+    currency?: string;
+    date?: string;
+}
+
+export async function createTransaction(userId: string, data: CreateTransactionData) {
+    return withPrismaErrorHandling(async () => {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { baseCurrency: true },
+        });
+
+        return prisma.transaction.create({
+            data: {
+                userId,
+                amount: data.amount,
+                currency: data.currency || user?.baseCurrency || "USD",
+                category: data.category as Category,
+                type: data.type as TransactionType,
+                description: data.description || null,
+                date: data.date ? new Date(data.date) : new Date(),
+            },
+        });
+    }, "Transaction");
 }
