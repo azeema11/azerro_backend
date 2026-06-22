@@ -1,20 +1,13 @@
-import { Request, Response } from "express";
-import { unifiedAssistantQuery } from "../services/assistant.service";
+import { Response } from "express";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 import { asyncHandler } from "../../utils/async_handler";
+import { runAssistant } from "../adk/runner";
 
 export const postUnifiedAssistant = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.userId;
-    if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = req.userId!;
+    const { message, sessionId } = req.body;
 
-    const { message } = req.body;
+    const result = await runAssistant(userId, message, sessionId);
 
-    if (!message) {
-        return res.status(400).json({ error: "Missing 'message' in request body." });
-    }
-
-    const result = await unifiedAssistantQuery(userId, message);
-    res.status(200).json(result);
+    return res.status(200).json(result);
 });

@@ -257,7 +257,27 @@ The database has evolved through several migrations:
 6. **Schema Optimization** (20250810054011): Replaced Float with Decimal for monetary values, optimized String to VarChar types ✨ **NEW**
 7. **Data Integrity Constraints** (20250810054013): Added database-level constraints for data validation ✨ **NEW**
 
-This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, goal setting, and financial reporting capabilities.
+### 12. ChatMessage ✨ **UPDATED**
+**Purpose**: Stores AI assistant conversation history for session persistence
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| id | UUID | PRIMARY KEY | Unique message identifier |
+| userId | UUID | FOREIGN KEY (CASCADE) | Reference to User |
+| role | VarChar(10) | NOT NULL | Message author: "user" or "ai" |
+| content | Text | NOT NULL | Message content |
+| intent | VarChar(50) | NULLABLE | Conversation intent (e.g., "assistant") |
+| sessionId | VarChar(100) | NULLABLE | Groups messages in a conversation session |
+| toolCalls | JSON | NULLABLE | Tools the assistant invoked during this turn |
+| actions | JSON | NULLABLE | Write actions executed (create_transaction, update_goal, etc.) |
+| metadata | JSON | NULLABLE | Flexible: model name, token count, latency, etc. |
+| createdAt | DateTime | DEFAULT: now() | Message timestamp |
+
+**Indexes**:
+- (userId, createdAt) for chronological message retrieval
+- (userId, sessionId) for session-scoped message queries
+
+This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, goal setting, AI-powered financial assistance, and financial reporting capabilities.
 
 ## 🆕 Recent Schema Enhancements
 

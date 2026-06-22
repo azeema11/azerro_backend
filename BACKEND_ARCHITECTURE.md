@@ -77,12 +77,15 @@ src/
 ├── utils/               # Utility functions and helpers (async_handler, currency, redis, date, utils, etc.)
 ├── jobs/                # Background job definitions
 ├── scripts/             # Database seeding and maintenance
-├── ai/                  # AI-powered features module
-│   ├── controllers/     # AI endpoint handlers
-│   ├── services/        # AI business logic (Gemini/Ollama integration)
-│   ├── routes/          # AI route definitions
-│   ├── utils/           # AI provider, JSON extractor, generateAndParse
-│   └── tests/           # Unit and integration tests (fully mocked)
+├── ai/                  # AI-powered finance assistant (Google ADK)
+│   ├── adk/             # ADK agent core
+│   │   ├── assistant/   # LLM assistant definitions (finance.assistant.ts)
+│   │   ├── tools/       # Data retrieval + action tools
+│   │   ├── runner.ts    # Session management & execution loop
+│   │   └── model_config.ts  # LLM provider configuration
+│   ├── controllers/     # AI endpoint handler
+│   ├── routes/          # AI route definition
+│   └── tests/           # Integration tests (fully mocked)
 ├── validations/         # Zod validation schemas
 └── tests/               # Unit and integration tests
 ```
@@ -432,17 +435,10 @@ GET  /reports/recurring-transactions - Detect recurring transaction patterns wit
 
 ```
 
-### AI Routes (`/ai`) ✨ **NEW**
+### AI Routes (`/ai`) ✨ **UPDATED** — ADK-powered unified assistant
 ```
 
-POST /ai/assistant           - Unified AI assistant for general financial advice
-POST /ai/transaction/agent   - AI-powered transaction analysis and Q&A
-POST /ai/goal/resolve        - AI advice for resolving goal conflicts
-GET  /ai/budget/summary      - AI-generated budget summary
-POST /ai/budget/chat         - Chat with AI budget advisor
-POST /ai/report/summarize    - AI-generated report summaries (budgetVsActual, incomeVsExpense, categoryBreakdown)
-GET  /ai/planned-event/impact - AI analysis of planned event financial impact
-GET  /ai/predictive/insights  - AI-powered predictive financial insights
+POST /ai/assistant           - Unified finance assistant (handles all financial queries, analysis, and actions via Google ADK)
 
 ```
 
@@ -792,12 +788,12 @@ async function fetchCurrentPrice(ticker: string, assetType: string) {
 
 **What's Cached**:
 - **Exchange Rates**: `rate:{base}:{target}` keys with TTL until UTC midnight
-- **AI Responses**: `ai_response:{sha256}` keys with 3-hour TTL (only non-empty responses)
+- **ADK Data Tools**: `adk:txn:*`, `adk:goals:*`, `adk:budgets:*`, `adk:events:*`, `adk:profile:*` with 3-10 min TTL
 - **Report Aggregations**: `report:{type}:{userId}:...` keys with 10-minute TTL
 - **Budget Performance**: `budget:performance:{userId}` with 10-minute TTL
 - **User Profiles**: `user:profile:{userId}` with 1-hour TTL
 - **Goal Conflicts**: `goal:conflicts:{userId}` with 10-minute TTL
-- **AI Context Data**: `ai:budget-context:{userId}`, `ai:txn-context:{userId}` with 5-minute TTL
+- **ADK Session History**: Loaded from PostgreSQL `ChatMessage` table on session creation
 - **Asset Prices**: `price:{type}:{ticker}` with 30-minute TTL (stocks/crypto) or 6-hour TTL (metals)
 
 **Design Principles**:
@@ -821,7 +817,8 @@ REDIS_URL=redis://redis:6379
 JWT_SECRET=...
 FINNHUB_API_KEY=...
 GEMINI_API_KEY=...
-OLLAMA_MODEL_ENDPOINT=...
+AI_PROVIDER=gemini
+AI_MODEL=gemini-2.5-flash
 PORT=3000
 NODE_ENV=production
 ```
@@ -831,7 +828,7 @@ NODE_ENV=production
 All tests (unit and integration) are **fully mocked** — no test database or external services required:
 - **Database**: Prisma client is mocked via Vitest module mocks
 - **Redis**: All safe wrappers are mocked in `src/tests/setup/redis_mock.ts`
-- **AI Provider**: `generateAiResponse` and `generateAndParse` are mocked per test
+- **AI Runner**: `runAssistant` is mocked per test (no LLM calls needed)
 - **Auth Middleware**: Injected via Express middleware in integration tests
 
 ```bash

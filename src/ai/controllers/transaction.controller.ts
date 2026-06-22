@@ -1,14 +1,76 @@
-import { Request, Response } from "express";
-import { askQuestionToTransactionAgent } from "../services/transaction.service";
-import { AuthRequest } from "../../middlewares/auth.middleware";
-import { asyncHandler } from "../../utils/async_handler";
+import { Category, TransactionType } from "@prisma/client";
+import { getTransactions, createTransaction } from "../services/transaction.service";
+import { withCache, safeDel } from "../../utils/redis";
+import { toNumberSafe } from "../../utils/utils";
 
-export const askTransactionAgent = asyncHandler(async (req: AuthRequest, res: Response) => {
-    const userId = req.userId;
-    if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+function validateDateString(value: string | undefined, label: string): void {
+    if (value !== undefined && isNaN(Date.parse(value))) {
+        throw new Error(`Invalid ${label} format: ${value}`);
     }
-    const { question } = req.body;
-    const result = await askQuestionToTransactionAgent(userId, question);
-    res.status(200).json(result);
-});
+}
+
+export async function handleGetTransactions(
+    userId: string,
+    input: {
+        category?: string;
+        type?: string;
+        startDate?: string;
+        endDate?: string;
+        limit?: number;
+    }
+) {
+    validateDateString(input.startDate, "startDate");
+    validateDateString(input.endDate, "endDate");
+
+    const cacheKeySuffix = `${input.category || "all"}:${input.type || "all"}:${input.startDate || ""}:${input.endDate || ""}:${input.limit ?? 50}`;
+    return withCache(`adk:txn:${userId}:${cacheKeySuffix}`, 300, async () => {
+        const transactions = await getTransactions(userId, {
+            category: input.category as Category,
+            type: input.type as TransactionType,
+            startDate: input.startDate,
+            endDate: input.endDate,
+            limit: input.limit,
+        });
+
+        return transactions.map((t) => ({
+            id: t.id,
+            date: t.date.toISOString(),
+            amount: toNumberSafe(t.amount),
+            category: t.category,
+            description: t.description || "",
+            currency: t.currency,
+            type: t.type,
+        }));
+    });
+}
+
+export async function handleCreateTransaction(
+    userId: string,
+    input: {
+        amount: number;
+        category: string;
+        type: string;
+        description?: string;
+        currency?: string;
+        date?: string;
+    }
+) {
+    validateDateString(input.date, "date");
+
+    const transaction = await createTransaction(userId, {
+        amount: input.amount,
+        category: input.category,
+        type: input.type,
+        description: input.description,
+        currency: input.currency,
+        date: input.date,
+    });
+
+    await safeDel(`adk:txn:${userId}:all:all:50`);
+
+    return {
+        status: "success",
+        message: `Transaction created: ${input.type} of ${input.amount} ${transaction.currency} in ${input.category}`,
+        transactionId: transaction.id,
+    };
+}

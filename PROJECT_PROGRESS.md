@@ -380,19 +380,12 @@ GET /reports/goal-progress         - Financial goals progress tracking
 GET /reports/recurring-transactions - Detect recurring transaction patterns with frequency analysis
 ```
 
-### AI Module (8 endpoints) ✨ **NEW**
+### AI Module (1 endpoint) ✨ **UPDATED** — ADK-powered unified assistant
 ```
-POST /ai/assistant           - Unified AI assistant for general financial advice
-POST /ai/transaction/agent   - AI-powered transaction analysis and Q&A
-POST /ai/goal/resolve        - AI advice for resolving goal conflicts
-GET  /ai/budget/summary      - AI-generated budget summary
-POST /ai/budget/chat         - Chat with AI budget advisor
-POST /ai/report/summarize    - AI-generated report summaries
-GET  /ai/planned-event/impact - AI analysis of planned event financial impact
-GET  /ai/predictive/insights  - AI-powered predictive financial insights
+POST /ai/assistant           - Unified finance assistant (handles all financial queries, analysis, and actions via Google ADK)
 ```
 
-**Total: 49 API endpoints** covering all core personal finance functionality ✨ **UPDATED**
+**Total: 42 API endpoints** covering all core personal finance functionality ✨ **UPDATED**
 
 ### Recent Enhancements (Latest Updates)
 
@@ -537,28 +530,30 @@ The database has undergone extensive optimization resulting in significant impro
 
 **Status**: ✅ **Production-ready with enterprise-grade optimization**
 
-## 🤖 AI-Powered Features ✅ **COMPLETE** ✨ **NEW**
+## 🤖 AI-Powered Features ✅ **COMPLETE** ✨ **UPDATED** — Google ADK Architecture
 
-### AI Module Implementation
-The application now includes a comprehensive AI module with Google Gemini and Ollama integration:
+### Unified Finance Assistant
+The application uses a single **Google ADK-powered finance assistant** that replaces all previous specialized AI endpoints. The assistant uses tool-based architecture where the LLM decides which tools to call based on the user's natural language message.
 
 **What's Working**:
-- ✅ **Unified Assistant**: General-purpose AI assistant for financial advice
-- ✅ **Transaction Agent**: Natural language Q&A about transaction history
-- ✅ **Goal Conflict Resolution**: AI-powered advice for resolving goal conflicts
-- ✅ **Budget Analysis**: AI-generated budget summaries and chat advisor
-- ✅ **Report Summarization**: AI summaries of financial reports
-- ✅ **Planned Event Impact**: AI analysis of financial impact from planned events
-- ✅ **Predictive Insights**: AI-powered forecasting and spending trend analysis
+- ✅ **Transaction Analysis**: Queries spending history with date range, category, and type filters
+- ✅ **Budget Analysis**: Budget vs actual comparison with multi-currency conversion via `get_report` tool
+- ✅ **Goal Management**: View goals, detect conflicts, create new goals, update targets/deadlines
+- ✅ **Report Generation**: Income vs expense, category breakdown, budget vs actual — all with currency conversion
+- ✅ **Planned Event Analysis**: View upcoming events, analyze impact, create new events
+- ✅ **Predictive Insights**: Forecast spending trends using historical transaction data
+- ✅ **Action Execution**: Create transactions, goals, budgets, planned events — with confirmation flow
+- ✅ **Session Persistence**: Chat history survives server restarts via PostgreSQL
 
 **Technical Implementation**:
-- **AI Provider**: Supports Google Gemini API with Ollama fallback
-- **Unified Response Handler**: `generateAndParse()` consolidates generate + JSON extract + fallback logic across all AI services
-- **Architecture**: Modular design for potential microservice extraction
-- **Validation**: Zod schemas for all AI endpoints
-- **Service Layer**: Complete separation of AI business logic
+- **Framework**: Google ADK (`@google/adk`) with `LlmAgent`, `FunctionTool`, `InMemoryRunner`
+- **AI Provider**: Google Gemini (default `gemini-2.5-flash`), Ollama prepared for future
+- **Tools**: 6 data tools + 5 action tools with Zod parameter schemas
+- **Reports**: `get_report` tool delegates to `report.service.ts` for multi-currency conversion
+- **Caching**: All data tools use `withCache()` with 3-10 min TTL; action tools invalidate related caches
+- **Persistence**: Chat messages stored with `sessionId`, `toolCalls`, and `actions` metadata
 - **Rate Limiting**: 30 requests per 60-second window via atomic Redis counters
-- **Context Caching**: Budget and transaction context cached with `withCache()` (5-minute TTL)
+- **Validation**: Zod schema for request body (`message` + optional `sessionId`)
 
 ## 🐳 Docker & Deployment ✅ **COMPLETE** ✨ **UPDATED**
 
@@ -657,7 +652,7 @@ docker compose down
 | Reports & Analytics | ✅ Complete | 100% | 7 comprehensive reports |
 | Service Layer | ✅ Complete | 100% | Full implementation across all modules |
 | Planned Events | ✅ Complete | 100% | Full implementation with service layer and API endpoints |
-| AI Module | ✅ Complete | 100% | 8 AI-powered endpoints with Gemini/Ollama ✨ **NEW** |
+| AI Module | ✅ Complete | 100% | Unified ADK finance assistant with 11 tools (Gemini) ✨ **UPDATED** |
 | Docker Setup | ✅ Complete | 100% | Dual compose files (local + prod), multi-stage Dockerfile, CI/CD deploy |
 
 ## 🚀 Deployment Readiness
@@ -697,7 +692,7 @@ NODE_ENV=production
 ## 🎯 Next Development Phases
 
 ### Phase 1: Advanced Features — ✅ **COMPLETE**
-- ~~Assistant system implementation~~ ✅ Done — 8 AI endpoints (Gemini/Ollama)
+- ~~Assistant system implementation~~ ✅ Done — Unified ADK finance assistant (Gemini)
 - ~~Advanced analytics and reporting~~ ✅ Done — 7 report endpoints + AI summaries
 - ~~Schema-based validation with Zod~~ ✅ Done — 10 Zod schemas + validate middleware across routes
 - Budget alerts and notifications — 🔄 **NOT YET** (no push/email notification system)

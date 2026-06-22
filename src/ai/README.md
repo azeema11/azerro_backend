@@ -1,153 +1,162 @@
 # AI Module
 
-This module provides AI-powered features for the application, including transaction Q&A, goal conflict resolution, budget advice, report summarization, and predictive financial insights.
+This module provides an AI-powered unified finance assistant built on **Google ADK (Agent Development Kit)**. The assistant handles all financial queries, analysis, and actions through a single conversational endpoint.
 
-## Features
+## Architecture
 
-### Available AI Endpoints
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ai/assistant` | POST | Unified AI assistant for general financial advice |
-| `/ai/transaction/agent` | POST | Natural language Q&A about transaction history |
-| `/ai/goal/resolve` | POST | AI advice for resolving goal conflicts |
-| `/ai/budget/summary` | GET | AI-generated budget analysis summary |
-| `/ai/budget/chat` | POST | Interactive chat with budget advisor |
-| `/ai/report/summarize` | POST | AI summaries of financial reports |
-| `/ai/planned-event/impact` | GET | AI analysis of planned event financial impact |
-| `/ai/predictive/insights` | GET | AI-powered predictive financial insights |
+The module uses a **tool-based agent architecture** where a single LLM assistant is equipped with data retrieval tools and action tools. The assistant decides which tools to call based on the user's natural language message — no intent routing or specialized endpoints needed.
 
-### AI Provider Configuration
-The module supports two AI providers:
-- **Google Gemini** (Primary): Set `GEMINI_API_KEY` in environment
-- **Ollama** (Fallback): Set `OLLAMA_MODEL_ENDPOINT` for local LLM
-
-### Response Caching
-AI responses are cached in Redis using the resilient wrappers from `src/utils/redis.ts`:
-- Cache key: `ai_response:{sha256(prompt)}` with a 3-hour TTL
-- Only non-empty responses are cached to prevent serving blank results
-- Cache lookups and writes use `safeGet`/`safeSetex` — Redis failures are logged but never break the AI flow
-
-### Response Generation
-All AI services use `generateAndParse()` from `src/ai/utils/ai_provider.ts` as a unified helper:
-- Calls `generateAiResponse()` to get the raw AI text (with SHA-256 cache dedup)
-- Extracts structured JSON via `extractJsonFromText()` from `json_extractor.ts`
-- Applies a text-based fallback function when JSON extraction fails
-- Returns `{ success, answer }` with error fallback on complete failure
-- Context data (budget, transactions) is cached separately using `withCache()` from `src/utils/redis.ts`
-
-### Rate Limiting
-AI endpoints are protected by the rate-limit middleware (`src/middlewares/rate_limit.middleware.ts`):
-- Uses atomic `safeIncrWithTTL()` (Redis Lua script) for reliable counting
-- AI endpoints: 30 requests per 60-second window
-- Auth endpoints: 10 requests per 60-second window
-- Fails open when Redis is unavailable (requests are allowed through)
-
-## Architecture & Future Extraction
-
-This module is designed to be potentially extracted into a separate microservice. Currently, it follows a **Shared Database** pattern where it directly accesses the main application's database.
-
-### Module Structure
 ```
 src/ai/
-├── controllers/         # HTTP request handlers
-│   ├── assistant.controller.ts
-│   ├── transaction.controller.ts
-│   ├── goal.controller.ts
-│   ├── budget.controller.ts
-│   ├── report.controller.ts
-│   ├── planned_event.controller.ts
-│   └── predictive.controller.ts
-├── services/            # AI business logic
-│   ├── assistant.service.ts
-│   ├── transaction.service.ts
-│   ├── goal.service.ts
-│   ├── budget.service.ts
-│   ├── report.service.ts
-│   ├── planned_event.service.ts
-│   └── predictive.service.ts
+├── adk/
+│   ├── assistant/
+│   │   └── finance.assistant.ts   # LLM assistant definition + system prompt
+│   ├── tools/
+│   │   ├── data_tools.ts          # Read-only tools (transactions, goals, budgets, events, profile, reports)
+│   │   └── action_tools.ts        # Write tools (create transaction/goal/budget/planned event, update goal)
+│   ├── runner.ts                  # Session management, execution loop, chat persistence
+│   └── model_config.ts            # LLM provider configuration (Gemini / Ollama)
+├── controllers/
+│   └── assistant.controller.ts    # HTTP handler for POST /ai/assistant
 ├── routes/
-│   └── ai.route.ts      # Route definitions
-├── utils/
-│   ├── ai_provider.ts   # Gemini/Ollama integration + generateAndParse helper
-│   └── json_extractor.ts # JSON extraction from AI text responses
+│   └── ai.route.ts                # Route definition
 └── tests/
-    ├── unit/             # Unit tests for AI services
-    └── integration/      # Integration tests (fully mocked, no DB required)
+    └── integration/
+        └── assistant.route.test.ts
 ```
 
-### Integration Points
-The module is integrated into the main app via:
-- `src/index.ts`: Imports and uses `src/ai/routes/ai.route.ts`.
-- All routes are protected by `authMiddleware` and rate-limited (30 requests/60s window).
+## Endpoint
 
-It **does not** import business logic from `src/services/`. It only relies on data access (Prisma) and general utilities.
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ai/assistant` | POST | Unified finance assistant — handles all financial queries and actions |
 
-### Dependencies to Migrate
+### Request
 
-If you decide to extract this `src/ai` folder into a separate repository/microservice, you must ensure the following dependencies are handled:
-
-1.  **Database Access (Prisma)**
-    -   The module imports `prisma` from `../../utils/db`.
-    -   **Action:** The new service will need its own Prisma Client installation and a copy of the `schema.prisma` (specifically the `User`, `Transaction`, `Goal`, `PlannedEvent`, and `Budget` models).
-
-2.  **Utilities & Redis**
-    -   The module imports helper functions from `../../utils/` (e.g., `toNumberSafe`, `withPrismaErrorHandling`).
-    -   The AI provider imports `safeGet`, `safeSetex`, and `withCache` from `../../utils/redis.ts` for response and context caching.
-    -   The AI provider uses `extractJsonFromText` from `./json_extractor.ts` for parsing structured responses.
-    -   **Action:** Copy the relevant utility functions and the Redis wrapper to the new service, or package them as a shared library. Ensure `REDIS_URL` is configured in the new service's environment.
-
-3.  **Authentication Middleware**
-    -   Controllers use `AuthRequest` from `../../middlewares/auth.middleware`.
-    -   **Action:** The new service will need a way to identify the user (e.g., accepting a `userId` in the request body or validating a JWT token if exposed directly).
-
-4.  **Environment Variables**
-    -   `GEMINI_API_KEY`: For Google Gemini integration.
-    -   `OLLAMA_MODEL_ENDPOINT`: For local Ollama fallback.
-    -   `REDIS_URL`: For AI response caching (defaults to `redis://redis:6379`).
-    -   **Action:** Ensure these are configured in the new service's environment.
-
-### Extraction Steps
-
-1.  Create a new Node.js/TypeScript project.
-2.  Copy the contents of `src/ai/` into the new project's source folder.
-3.  Install necessary dependencies (`express`, `prisma`, `@google/generative-ai`, `ioredis`, etc.).
-4.  Copy `src/utils/db.ts` and `src/utils/utils.ts` (or relevant parts) to the new project.
-5.  Set up the `schema.prisma` file in the new project to match the main application's database schema.
-6.  Update imports in the copied files to point to the local versions of utilities and Prisma.
-7.  Update the `controllers` to read `userId` from the request body or headers, rather than relying on the Express `req.user` object from the main app's middleware (unless you duplicate the middleware).
-
-## Usage Examples
-
-### Unified Assistant
 ```json
 POST /ai/assistant
 {
-    "message": "How can I save more money this month?"
+    "message": "How much did I spend on groceries last month?",
+    "sessionId": "optional-session-id"
 }
 ```
 
-### Transaction Agent
+### Response
+
 ```json
-POST /ai/transaction/agent
 {
-    "question": "What was my total spending last month?"
+    "success": true,
+    "message": "You spent $342.50 on groceries last month...",
+    "actions": [],
+    "events": [
+        { "author": "azerro_finance_assistant", "text": "...", "isFinal": true }
+    ]
 }
 ```
 
-### Budget Chat
+When the assistant executes a write action (after user confirmation), the `actions` array contains details:
+
 ```json
-POST /ai/budget/chat
 {
-    "message": "How can I reduce my grocery spending?",
-    "history": []
+    "actions": [
+        {
+            "tool": "create_transaction",
+            "args": { "amount": 50, "category": "GROCERY", "type": "EXPENSE" },
+            "result": { "status": "success", "transactionId": "uuid" }
+        }
+    ]
 }
 ```
 
-### Report Summarization
-```json
-POST /ai/report/summarize
-{
-    "reportType": "budgetVsActual",
-    "options": {}
-}
-```
+## Capabilities
+
+### Data Tools (read-only)
+
+| Tool | Description |
+|------|-------------|
+| `get_transactions` | Fetch transactions with filters (category, type, date range, limit) |
+| `get_goals` | Fetch savings goals (active or all) |
+| `get_budgets` | Fetch budgets by category |
+| `get_planned_events` | Fetch planned financial events |
+| `get_user_profile` | Fetch user's name, base currency, monthly income |
+| `get_report` | Generate reports with multi-currency conversion (budget vs actual, income vs expense, category breakdown) |
+
+### Action Tools (write, require user confirmation)
+
+| Tool | Description |
+|------|-------------|
+| `create_transaction` | Create a new income/expense transaction |
+| `create_goal` | Create a new savings goal |
+| `update_goal` | Update a goal's target amount or date |
+| `create_budget` | Create or update a budget for a category/period |
+| `create_planned_event` | Create a new planned financial event |
+
+### Action Proposal Flow
+
+Write actions follow a confirmation pattern:
+1. User asks to create/update something
+2. Assistant proposes the action with specific values
+3. User confirms ("yes", "go ahead")
+4. Assistant executes the tool and reports the result
+
+The assistant **never** executes a write action without explicit user confirmation.
+
+## AI Provider Configuration
+
+The module supports two AI providers via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AI_PROVIDER` | `gemini` or `ollama` | `gemini` |
+| `AI_MODEL` | Model name | `gemini-2.5-flash` (Gemini) / `llama3.1:8b` (Ollama) |
+| `GEMINI_API_KEY` | Google Gemini API key | Required for Gemini |
+| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
+
+> **Note:** Phase 1 only supports Gemini. Ollama support is prepared in `model_config.ts` but not yet wired.
+
+## Session Persistence
+
+- Conversations are stored in the `ChatMessage` table with `intent: "assistant"` and a `sessionId`
+- On server restart, recent chat history is loaded from PostgreSQL into the ADK in-memory session
+- The `sessionId` field groups messages within a conversation session
+- Tool calls and executed actions are stored as JSON metadata on AI messages
+
+## Response Caching
+
+Data tools use Redis caching via `withCache()` from `src/utils/redis.ts`:
+
+| Tool | Cache Key Pattern | TTL |
+|------|-------------------|-----|
+| `get_transactions` | `adk:txn:{userId}:...` | 5 min |
+| `get_goals` | `adk:goals:{userId}:...` | 3 min |
+| `get_budgets` | `adk:budgets:{userId}:...` | 3 min |
+| `get_planned_events` | `adk:events:{userId}:...` | 3 min |
+| `get_user_profile` | `adk:profile:{userId}` | 10 min |
+| `get_report` | Delegated to `report.service.ts` caching | 10 min |
+
+Action tools invalidate related caches after successful writes.
+
+## Rate Limiting
+
+AI endpoints are protected by the rate-limit middleware:
+- 30 requests per 60-second window
+- Uses atomic `safeIncrWithTTL()` (Redis Lua script)
+- Fails open when Redis is unavailable
+
+## Integration Points
+
+- **Route registration**: `src/index.ts` mounts `src/ai/routes/ai.route.ts` under `/ai`
+- **Auth**: All routes protected by `authMiddleware` — `userId` injected via JWT
+- **Database**: Uses Prisma directly for data access (shared database pattern)
+- **Reports**: `get_report` tool delegates to `src/services/report.service.ts` for multi-currency report generation
+
+## Dependencies
+
+- `@google/adk` — Google Agent Development Kit (LlmAgent, FunctionTool, InMemoryRunner)
+- `@google/genai` — Content helpers (createUserContent, createModelContent)
+- `zod` — Tool parameter schemas
+- `@prisma/client` — Database access and enum types
+
+## Future Extensions
+
+The `src/ai/adk/assistant/` folder is structured for multiple assistants. Future assistants (e.g. `investment.assistant.ts`, `tax.assistant.ts`) can be added alongside `finance.assistant.ts` and wired to separate or shared endpoints.

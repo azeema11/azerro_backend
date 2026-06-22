@@ -1,181 +1,47 @@
+import { Category, Periodicity } from "@prisma/client";
 import prisma from "../../utils/db";
-import { generateAndParse } from "../utils/ai_provider";
-import { toNumberSafe } from "../../utils/utils";
-import { safeGet, withCache } from "../../utils/redis";
+
+export async function getBudgets(userId: string, category?: Category) {
+    const where: Record<string, unknown> = { userId };
+    if (category) where.category = category;
+
+    return prisma.budget.findMany({ where });
+}
+
+export interface UpsertBudgetData {
+    category: string;
+    amount: number;
+    period: string;
+}
 
 /**
- * Generates a passive budget analysis summary for the user.
+ * Finds an existing budget by (userId, category, period) and updates it,
+ * or creates a new one. Returns the record and whether it was an update or create.
  */
-export const getBudgetAnalysis = async (userId: string): Promise<{ success: boolean, answer: any }> => {
-    try {
-        // 1. Fetch User Data
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { baseCurrency: true, monthlyIncome: true }
+export async function upsertBudget(userId: string, data: UpsertBudgetData) {
+    const existing = await prisma.budget.findFirst({
+        where: {
+            userId,
+            category: data.category as Category,
+            period: data.period as Periodicity,
+        },
+    });
+
+    if (existing) {
+        const updated = await prisma.budget.update({
+            where: { id: existing.id },
+            data: { amount: data.amount },
         });
-
-        if (!user) throw new Error("User not found");
-
-        const cacheKey = `ai:budget-analysis:${userId}`;
-        const cached = await safeGet(cacheKey);
-        if (cached) return { success: true, answer: JSON.parse(cached) };
-
-        // 2. Fetch Recent Transactions (Last 30 Days)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        const transactions = await prisma.transaction.findMany({
-            where: {
-                userId,
-                date: { gte: thirtyDaysAgo }
-            },
-            select: {
-                amount: true,
-                currency: true,
-                category: true,
-                type: true,
-                date: true
-            }
-        });
-
-        // 3. Fetch Active Budgets
-        const budgets = await prisma.budget.findMany({
-            where: { userId }
-        });
-
-        // 4. Summarize Data for AI
-        const income = toNumberSafe(user.monthlyIncome || 0);
-
-        // Group spending by category
-        const spendingByCategory: Record<string, number> = {};
-        let totalSpent = 0;
-
-        transactions.forEach(t => {
-            if (t.type === 'EXPENSE') {
-                const amt = toNumberSafe(t.amount);
-                spendingByCategory[t.category] = (spendingByCategory[t.category] || 0) + amt;
-                totalSpent += amt;
-            }
-        });
-
-        // 5. Build Prompt
-        const prompt = `
-You are the Budget Advisor for Azerro.
-Analyze the user's financial data for the last 30 days.
-
-Data:
-- Base Currency: ${user.baseCurrency}
-- Monthly Income: ${income}
-- Total Spent (Last 30d): ${totalSpent}
-- Spending by Category: ${JSON.stringify(spendingByCategory)}
-- Active Budgets: ${JSON.stringify(budgets.map(b => ({ category: b.category, limit: toNumberSafe(b.amount), period: b.period })))}
-
-Your Task:
-Provide a JSON summary with:
-1. "status": "Good" | "Warning" | "Critical"
-2. "insights": An array of 3 short, actionable bullet points strings.
-3. "recommendation": A short paragraph of advice.
-
-Output Format (Strict JSON):
-{
-  "type": "budget_analysis",
-  "status": "string",
-  "insights": ["string", "string", "string"],
-  "recommendation": "string"
-}
-`;
-
-        const errorFallback = { type: "budget_analysis", status: "Error", insights: [], recommendation: "Error processing your request." };
-
-        return generateAndParse(
-            prompt,
-            (raw) => ({ type: "budget_analysis", status: "Unknown", insights: [], recommendation: raw }),
-            errorFallback,
-            cacheKey,
-            3600
-        );
-
-    } catch (error) {
-        console.error("Error in getBudgetAnalysis:", error);
-        return { success: false, answer: { type: "budget_analysis", status: "Error", insights: [], recommendation: "Error processing your request." } };
+        return { record: updated, action: "updated" as const };
     }
-};
 
-/**
- * Handles interactive chat with the Budget Advisor.
- */
-export const chatBudgetAdvisor = async (userId: string, message: string, history: { role: string, content: string }[] = []): Promise<{ success: boolean, answer: any }> => {
-    try {
-        const context = await withCache(`ai:budget-context:${userId}`, 300, async () => {
-            const user = await prisma.user.findUnique({
-                where: { id: userId },
-                select: { baseCurrency: true }
-            });
-
-            const sixtyDaysAgo = new Date();
-            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-
-            const transactions = await prisma.transaction.findMany({
-                where: { userId, date: { gte: sixtyDaysAgo } },
-                orderBy: { date: 'desc' },
-                take: 50
-            });
-
-            const budgets = await prisma.budget.findMany({ where: { userId } });
-
-            return {
-                currency: user?.baseCurrency,
-                transactions: transactions.map(t => ({
-                    date: t.date.toISOString().split('T')[0],
-                    amount: toNumberSafe(t.amount),
-                    cat: t.category,
-                    type: t.type,
-                    desc: t.description
-                })),
-                budgets: budgets.map(b => ({ cat: b.category, amt: toNumberSafe(b.amount), period: b.period }))
-            };
-        });
-
-        const systemPrompt = `
-You are the Budget Advisor Chatbot.
-Answer the user's question based on their recent financial data.
-Be helpful, specific, and data-driven.
-If the answer isn't in the data, say "I don't have enough data to answer that."
-
-Data Context:
-${JSON.stringify(context)}
-
-Output Format (Strict JSON):
-{
-  "type": "chat",
-  "message": "Your answer...",
-  "action": null | { "type": "create_budget", "category": "string", "amount": number }
+    const created = await prisma.budget.create({
+        data: {
+            userId,
+            category: data.category as Category,
+            amount: data.amount,
+            period: data.period as Periodicity,
+        },
+    });
+    return { record: created, action: "created" as const };
 }
-(Only suggest an action if the user explicitly asks to set a budget or the context strongly implies it).
-`;
-
-        const conversationHistory = history.map(h => `${h.role === 'user' ? 'User' : 'AI'}: ${h.content}`).join('\n');
-
-        const fullPrompt = `
-${systemPrompt}
-
-Conversation:
-${conversationHistory}
-
-User Question: "${message}"
-
-Answer (JSON):
-`;
-
-        const chatError = { type: "chat", message: "Error processing your request.", action: null };
-        return generateAndParse(
-            fullPrompt,
-            (raw) => ({ type: "chat", message: raw, action: null }),
-            chatError
-        );
-
-    } catch (error) {
-        console.error("Error in chatBudgetAdvisor:", error);
-        return { success: false, answer: { type: "chat", message: "Error processing your request.", action: null } };
-    }
-};

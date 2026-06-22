@@ -112,15 +112,8 @@ export const createGoal = asyncHandler(async (req: AuthRequest, res: Response) =
 - ✅ `deleteBudget` - Remove a budget
 - ✅ `getBudgetPerformance` - Budget vs actual spending performance
 
-### 10. AI Controllers (`src/ai/controllers/`)
-- ✅ `unifiedAssistantQuery` - AI assistant for financial advice
-- ✅ `askTransactionQuestion` - AI-powered transaction Q&A
-- ✅ `resolveGoalConflict` - AI goal conflict resolution
-- ✅ `getBudgetSummary` - AI budget analysis summary
-- ✅ `chatBudgetAdvisor` - AI budget chat advisor
-- ✅ `summarizeReport` - AI report summarization
-- ✅ `getPlannedEventImpact` - AI planned event impact analysis
-- ✅ `getPredictiveInsights` - AI predictive financial insights
+### 10. AI Controller (`src/ai/controllers/assistant.controller.ts`) ✨ **UPDATED**
+- ✅ `postUnifiedAssistant` - Unified finance assistant (Google ADK) — single endpoint handles all financial queries and actions
 
 ## 🔧 **Error Handling Flow**
 
@@ -166,7 +159,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 Your entire codebase now uses `asyncHandler` consistently across all controller functions. This provides:
 
-- **49 Controller Functions** properly wrapped with asyncHandler (including Reports, Planned Events, Budget, and AI controllers)
+- **42 Controller Functions** properly wrapped with asyncHandler (including Reports, Planned Events, Budget, and AI assistant)
 - **Consistent Error Handling** across all API endpoints
 - **Production-Ready** error responses
 - **Clean, Maintainable Code** structure
