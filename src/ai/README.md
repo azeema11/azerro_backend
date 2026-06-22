@@ -80,6 +80,8 @@ When the assistant executes a write action (after user confirmation), the `actio
 | `get_planned_events` | Fetch planned financial events |
 | `get_user_profile` | Fetch user's name, base currency, monthly income |
 | `get_report` | Generate reports with multi-currency conversion (budget vs actual, income vs expense, category breakdown) |
+| `get_holdings` | Fetch user's investment holdings (stocks, crypto, metals) |
+| `get_bank_accounts` | Fetch user's bank accounts and balances |
 
 ### Action Tools (write, require user confirmation)
 
@@ -87,9 +89,10 @@ When the assistant executes a write action (after user confirmation), the `actio
 |------|-------------|
 | `create_transaction` | Create a new income/expense transaction |
 | `create_goal` | Create a new savings goal |
-| `update_goal` | Update a goal's target amount or date |
+| `update_goal` | Update a goal's target amount, date, saved progress, or completion status |
 | `create_budget` | Create or update a budget for a category/period |
 | `create_planned_event` | Create a new planned financial event |
+| `update_planned_event` | Update a planned financial event's name, estimated cost, target date, saved progress, or completion status |
 
 ### Action Proposal Flow
 

@@ -23,9 +23,5 @@ export function getModelConfig(): ModelConfig {
     const defaultModel = provider === "gemini" ? "gemini-2.5-flash" : "llama3.1:8b";
     const model = process.env.AI_MODEL || defaultModel;
 
-    if (provider === "gemini") {
-        return { model, provider };
-    }
-
     return { model, provider };
 }

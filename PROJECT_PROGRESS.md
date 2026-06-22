@@ -540,7 +540,9 @@ The application uses a single **Google ADK-powered finance assistant** that repl
 - ✅ **Budget Analysis**: Budget vs actual comparison with multi-currency conversion via `get_report` tool
 - ✅ **Goal Management**: View goals, detect conflicts, create new goals, update targets/deadlines
 - ✅ **Report Generation**: Income vs expense, category breakdown, budget vs actual — all with currency conversion
-- ✅ **Planned Event Analysis**: View upcoming events, analyze impact, create new events
+- ✅ **Planned Event Analysis**: View upcoming events, analyze impact, create new events, and update existing events via `update_planned_event` tool
+- ✅ **Investment Holdings**: View user's investment holdings (stocks, crypto, metals) via `get_holdings` tool
+- ✅ **Bank Accounts**: View user's bank accounts and balances via `get_bank_accounts` tool
 - ✅ **Predictive Insights**: Forecast spending trends using historical transaction data
 - ✅ **Action Execution**: Create transactions, goals, budgets, planned events — with confirmation flow
 - ✅ **Session Persistence**: Chat history survives server restarts via PostgreSQL
@@ -548,7 +550,7 @@ The application uses a single **Google ADK-powered finance assistant** that repl
 **Technical Implementation**:
 - **Framework**: Google ADK (`@google/adk`) with `LlmAgent`, `FunctionTool`, `InMemoryRunner`
 - **AI Provider**: Google Gemini (default `gemini-2.5-flash`), Ollama prepared for future
-- **Tools**: 6 data tools + 5 action tools with Zod parameter schemas
+- **Tools**: 8 data tools + 6 action tools with Zod parameter schemas
 - **Reports**: `get_report` tool delegates to `report.service.ts` for multi-currency conversion
 - **Caching**: All data tools use `withCache()` with 3-10 min TTL; action tools invalidate related caches
 - **Persistence**: Chat messages stored with `sessionId`, `toolCalls`, and `actions` metadata
@@ -652,7 +654,7 @@ docker compose down
 | Reports & Analytics | ✅ Complete | 100% | 7 comprehensive reports |
 | Service Layer | ✅ Complete | 100% | Full implementation across all modules |
 | Planned Events | ✅ Complete | 100% | Full implementation with service layer and API endpoints |
-| AI Module | ✅ Complete | 100% | Unified ADK finance assistant with 11 tools (Gemini) ✨ **UPDATED** |
+| AI Module | ✅ Complete | 100% | Unified ADK finance assistant with 14 tools (Gemini) ✨ **UPDATED** |
 | Docker Setup | ✅ Complete | 100% | Dual compose files (local + prod), multi-stage Dockerfile, CI/CD deploy |
 
 ## 🚀 Deployment Readiness
