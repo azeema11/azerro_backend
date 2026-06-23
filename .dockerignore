@@ -22,6 +22,7 @@ dist
 # Debug files
 Dockerfile.debug
 docker-compose.debug.yml
+docker-compose*.yml
 
 # Documentation
 *.md
@@ -29,8 +30,10 @@ docker-compose.debug.yml
 
 # Tests
 src/tests
+src/ai/tests
 coverage
 .nyc_output
+vitest.config.ts
 
 # Logs
 logs
@@ -47,3 +50,4 @@ Thumbs.db
 # Misc
 .cursor
 .turbo
+.github

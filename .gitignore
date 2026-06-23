@@ -1,6 +1,8 @@
 node_modules
 # Keep environment variables out of version control
 .env
+.env.*
+!.env.example
 dist/
 
 Azerro_Backend_API_Collection.postman_collection.json
@@ -10,3 +12,20 @@ Azerro_Backend_API_Collection.postman_collection.json
 coverage/
 
 deploy.env
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Cursor/Editor specific
+.cursor/
+.turbo/
