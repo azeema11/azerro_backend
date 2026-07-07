@@ -48,6 +48,7 @@ model User {
   baseCurrency  String @default("INR") @db.VarChar(3) // User's preferred reporting currency
   goals         Goal[]
   chatMessages  ChatMessage[]
+  memories      UserMemory[]
 }
 
 model Holding {
@@ -256,3 +257,20 @@ model ChatMessage {
   @@index([userId, createdAt])
   @@index([userId, sessionId])
 }
+
+model UserMemory {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  category    String   @db.VarChar(50)  // e.g., "risk_profile", "wishlist", "favourites", "investment_preferences"
+  key         String   @db.VarChar(100) // e.g., "tolerance", "stocks", "mutual_funds", "sectors"
+  value       Json                      // Flexible JSON for structured values or arrays
+  description String?  @db.VarChar(500) // Optional description of the preference
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, category, key])
+  @@index([userId])
+  @@index([userId, category])
+}
+

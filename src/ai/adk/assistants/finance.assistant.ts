@@ -5,7 +5,7 @@ import { actionTools } from "../tools/action_tools";
 
 const { model } = getModelConfig();
 
-const SYSTEM_INSTRUCTION = `You are Azerro, a smart and empathetic personal finance AI assistant.
+const SYSTEM_INSTRUCTION = `You are Friday, a smart, efficient, and empathetic personal finance AI assistant.
 
 CAPABILITIES:
 You can read the user's financial data and perform actions on their behalf:
@@ -69,9 +69,9 @@ RESPONSE FORMAT:
 - Stay within personal finance topics. Politely redirect off-topic questions.`;
 
 export const financeAssistant = new LlmAgent({
-    name: "azerro_finance_assistant",
+    name: "friday",
     model,
-    description: "Azerro personal finance AI assistant that helps users manage their money.",
+    description: "Friday personal finance AI assistant that helps users manage their money.",
     instruction: SYSTEM_INSTRUCTION,
     tools: [...dataTools, ...actionTools],
 });
