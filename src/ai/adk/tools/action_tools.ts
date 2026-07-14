@@ -11,7 +11,7 @@ const TRANSACTION_TYPES = Object.values(TransactionType) as [string, ...string[]
 const PERIODS = Object.values(Periodicity) as [string, ...string[]];
 
 function getUserId(ctx?: Context): string {
-    const userId = ctx?.state.get<string>("temp:userId");
+    const userId = ctx?.state.get<string>("userId");
     if (!userId) throw new Error("userId not found in session state");
     return userId;
 }

@@ -17,7 +17,7 @@ const ASSET_TYPES = Object.values(AssetType) as [string, ...string[]];
 const ACCOUNT_TYPES = Object.values(AccountType) as [string, ...string[]];
 
 function getUserId(ctx?: Context): string {
-    const userId = ctx?.state.get<string>("temp:userId");
+    const userId = ctx?.state.get<string>("userId");
     if (!userId) throw new Error("userId not found in session state");
     return userId;
 }

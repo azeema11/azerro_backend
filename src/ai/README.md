@@ -4,17 +4,26 @@ This module provides an AI-powered unified finance assistant built on **Google A
 
 ## Architecture
 
-The module uses a **tool-based agent architecture** where a single LLM assistant is equipped with data retrieval tools and action tools. The assistant decides which tools to call based on the user's natural language message — no intent routing or specialized endpoints needed.
+The module uses a **Multi-Agent Coordinator Architecture** built on top of Google ADK. Instead of a single monolithic assistant, we have a hierarchical system where a main coordinator delegates specialized tasks to dedicated sub-assistants:
+
+1. **Azerro (Main Coordinator)**: The primary entry point for all user requests. It analyzes the user's message and decides whether to delegate to **Friday** (for general finance) or **Jarvis** (for personalized investment advice).
+2. **Friday (Finance Specialist)**: Equipped with tools to analyze transactions, budgets, bank accounts, and generate financial reports.
+3. **Jarvis (Investment Advisor)**: Equipped with tools to analyze holdings, search market instruments, fetch live stock/fund details, and personalize advice based on user-configurable memory preferences.
 
 ```
 src/ai/
 ├── adk/
-│   ├── assistant/
-│   │   └── finance.assistant.ts   # LLM assistant definition + system prompt
+│   ├── assistants/
+│   │   ├── azerro.assistant.ts    # Main Coordinator Agent
+│   │   ├── finance.assistant.ts   # Friday (Finance Specialist)
+│   │   └── investment.assistant.ts # Jarvis (Investment Advisor)
 │   ├── tools/
+│   │   ├── coordinator_tools.ts   # Tools for Azerro to delegate (ask_friday, ask_jarvis)
 │   │   ├── data_tools.ts          # Read-only tools (transactions, goals, budgets, events, profile, reports)
-│   │   └── action_tools.ts        # Write tools (create transaction/goal/budget/planned event, update goal)
-│   ├── runner.ts                  # Session management, execution loop, chat persistence
+│   │   ├── action_tools.ts        # Write tools (create transaction/goal/budget/planned event, update goal)
+│   │   ├── market_tools.ts        # Market data tools (search_market_instrument, get_market_instrument_details)
+│   │   └── memory_tools.ts        # Personal preference memory tools (get_user_memory, save_user_memory)
+│   ├── runner.ts                  # Session management, execution loop, and chat persistence
 │   └── model_config.ts            # LLM provider configuration (Gemini / Ollama)
 ├── controllers/
 │   └── assistant.controller.ts    # HTTP handler for POST /ai/assistant
@@ -70,7 +79,14 @@ When the assistant executes a write action (after user confirmation), the `actio
 
 ## Capabilities
 
-### Data Tools (read-only)
+### 1. Coordinator Tools (Azerro-only)
+
+| Tool | Description |
+|------|-------------|
+| `ask_friday` | Delegate general personal finance queries (transactions, budgets, bills, reports) to Friday |
+| `ask_jarvis` | Delegate investment advice, portfolio analysis, and preference management queries to Jarvis |
+
+### 2. Data Tools (read-only)
 
 | Tool | Description |
 |------|-------------|
@@ -82,8 +98,10 @@ When the assistant executes a write action (after user confirmation), the `actio
 | `get_report` | Generate reports with multi-currency conversion (budget vs actual, income vs expense, category breakdown) |
 | `get_holdings` | Fetch user's investment holdings (stocks, crypto, metals) |
 | `get_bank_accounts` | Fetch user's bank accounts and balances |
+| `get_networth_snapshot` | Fetch user's overall net worth snapshot across all assets and liabilities from INDMoney MCP |
+| `get_networth_holdings` | Fetch row-level holdings for a specific asset type (IND_STOCK, MF, US_STOCK, CRYPTO, etc.) from INDMoney MCP |
 
-### Action Tools (write, require user confirmation)
+### 3. Action Tools (write, require user confirmation)
 
 | Tool | Description |
 |------|-------------|
@@ -93,6 +111,20 @@ When the assistant executes a write action (after user confirmation), the `actio
 | `create_budget` | Create or update a budget for a category/period |
 | `create_planned_event` | Create a new planned financial event |
 | `update_planned_event` | Update a planned financial event's name, estimated cost, target date, saved progress, or completion status |
+
+### 4. Market Data Tools (Jarvis-only)
+
+| Tool | Description |
+|------|-------------|
+| `search_market_instrument` | Search for a stock or mutual fund by name/symbol to find its ticker using INDMoney's `lookup_ind_keys` tool |
+| `get_market_instrument_details` | Fetch live price, valuation metrics (P/E, PEG), analyst consensus, target prices, and news using INDMoney's `get_indian_stocks_details` or `get_us_stocks_details` tools |
+
+### 5. Memory & Preference Tools (Jarvis-only)
+
+| Tool | Description |
+|------|-------------|
+| `get_user_memory` | Retrieve stored user preferences, risk profiles, or wishlists/favourites |
+| `save_user_memory` | Save or update a personal preference, risk profile, or wishlist/favourites memory |
 
 ### Action Proposal Flow
 
@@ -162,4 +194,4 @@ AI endpoints are protected by the rate-limit middleware:
 
 ## Future Extensions
 
-The `src/ai/adk/assistant/` folder is structured for multiple assistants. Future assistants (e.g. `investment.assistant.ts`, `tax.assistant.ts`) can be added alongside `finance.assistant.ts` and wired to separate or shared endpoints.
+The `src/ai/adk/assistants/` folder is structured for multiple assistants. Future assistants (e.g. `tax.assistant.ts`) can be added alongside `finance.assistant.ts` and `investment.assistant.ts` and wired to separate or shared endpoints.

@@ -79,13 +79,15 @@ src/
 ├── scripts/             # Database seeding and maintenance
 ├── ai/                  # AI-powered finance assistant (Google ADK)
 │   ├── adk/             # ADK agent core
-│   │   ├── assistant/   # LLM assistant definitions (finance.assistant.ts)
-│   │   ├── tools/       # Data retrieval + action tools
+│   │   ├── assistants/  # LLM assistant definitions (azerro, friday, jarvis)
+│   │   ├── tools/       # Coordinator, data, action, market, and memory tools
 │   │   ├── runner.ts    # Session management & execution loop
 │   │   └── model_config.ts  # LLM provider configuration
 │   ├── controllers/     # AI endpoint handler
 │   ├── routes/          # AI route definition
 │   └── tests/           # Integration tests (fully mocked)
+├── services/            # Core services & Broker service factory
+│   └── brokers/         # Broker integrations (INDMoney, types, factory)
 ├── validations/         # Zod validation schemas
 └── tests/               # Unit and integration tests
 ```
@@ -435,10 +437,26 @@ GET  /reports/recurring-transactions - Detect recurring transaction patterns wit
 
 ```
 
-### AI Routes (`/ai`) ✨ **UPDATED** — ADK-powered unified assistant
+### AI Routes (`/ai`) ✨ **UPDATED** — Multi-Agent Coordinator Architecture
 ```
 
-POST /ai/assistant           - Unified finance assistant (handles all financial queries, analysis, and actions via Google ADK)
+POST /ai/assistant           - Unified finance assistant (handles all financial queries, analysis, and actions via Google ADK, delegating to Friday or Jarvis)
+
+```
+
+### Broker & User Memory Routes (`/brokers`) ✨ **UPDATED**
+```
+
+POST   /brokers/:broker/connect       - Connect a broker (e.g., INDMoney)
+GET    /brokers/indmoney/callback     - OAuth 2.1 callback endpoint (unauthenticated)
+GET    /brokers/:broker/status        - Get connection status of a broker
+POST   /brokers/:broker/sync          - Sync holdings from a broker
+POST   /brokers/:broker/disconnect    - Disconnect a broker
+GET    /brokers/:broker/search        - Search market instruments (stocks/funds)
+GET    /brokers/:broker/instrument/:symbol - Get detailed instrument fundamentals
+GET    /brokers/memory/all            - Get all user memories / preferences
+POST   /brokers/memory/save           - Save or update a user memory / preference
+DELETE /brokers/memory/:category/:key - Delete a specific user memory
 
 ```
 
@@ -1014,4 +1032,16 @@ CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
 - **Maintainability**: Changes to business logic don't affect HTTP handling
 - **Consistency**: Standardized error handling and validation patterns
 
-This architecture provides a robust, scalable foundation for the Azerro personal finance platform with clear separation of concerns, comprehensive error handling, efficient data processing patterns, and a modern service layer architecture. 
+This architecture provides a robust, scalable foundation for the Azerro personal finance platform with clear separation of concerns, comprehensive error handling, efficient data processing patterns, and a modern service layer architecture.
+
+### 🆕 Broker OAuth 2.1 with PKCE Flow ✨ **LATEST UPDATE**
+
+The INDMoney broker integration has been upgraded to a fully secure, production-ready **OAuth 2.1 with PKCE (Proof Key for Code Exchange) flow**:
+- **Dynamic Client Registration (DCR)**: Fully registered as an official OAuth client with INDmoney's MCP server (`https://mcp.indmoney.com/register`) using RFC 7591, obtaining a dedicated `client_id` and `client_secret` to bypass Cloudflare WAF blocks.
+- **PKCE Security**: Uses cryptographically secure `code_verifier` and `code_challenge` (S256 method) to protect against token interception attacks.
+- **State Validation**: Implements a random 16-byte `state` parameter to prevent Cross-Site Request Forgery (CSRF) attacks.
+- **URL-Encoded Token Exchange**: Performs secure, server-to-server token exchange and refresh using standard `application/x-www-form-urlencoded` format (RFC 6749) with native `fetch` (no external HTTP clients required).
+- **Unauthenticated Handoff Callback**: A dedicated `GET /brokers/indmoney/callback` endpoint receives the authorization code, validates the state, retrieves the PKCE verifier and redirect URI from `UserMemory`, and performs a secure token exchange.
+- **Auto Token Refresh**: Access tokens are automatically refreshed using the stored `refresh_token` when they are within 5 minutes of expiring, ensuring seamless background holdings sync and AI agent queries.
+- **Resilient Asset Syncing**: Uses the real **`networth_holdings`** tool to fetch holdings across asset types (`IND_STOCK`, `MF`, `US_STOCK`, `CRYPTO`). Natively handles missing currency fields by falling back to `INR`, and dynamically resolves `unit_price: 0` on crypto assets by calculating prices directly from `market_value / quantity`.
+- **Graceful Error Recovery**: If token refresh or sync fails due to invalid credentials, the system automatically marks the broker as disconnected in `UserMemory` and throws a structured `401 Unauthorized` domain error to prompt the client to reconnect. 

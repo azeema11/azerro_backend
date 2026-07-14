@@ -15,7 +15,7 @@ The database schema has been comprehensively optimized for performance, storage 
 - **Atomic Operations**: Replaced Promise.all with prisma.$transaction for data consistency
 
 ## Entity Relationship Diagram
-The database consists of 10 main entities with the following relationships:
+The database consists of 13 main entities with the following relationships:
 
 ```
 User (1) ──── (Many) UserAssistant ──── (Many) Assistant
@@ -25,7 +25,10 @@ User (1) ──── (Many) BankAccount ──── (Many) Transaction
 User (1) ──── (Many) PlannedEvent
 User (1) ──── (Many) Budget
 User (1) ──── (Many) Goal
+User (1) ──── (Many) ChatMessage
+User (1) ──── (Many) UserMemory
 CurrencyRate (standalone)
+CurrencyRateHistory (standalone)
 ```
 
 ## Database Tables
@@ -256,6 +259,7 @@ The database has evolved through several migrations:
 5. **Currency Rate History** (20250810045220): Added CurrencyRateHistory table for historical exchange rate tracking ✨ **NEW**
 6. **Schema Optimization** (20250810054011): Replaced Float with Decimal for monetary values, optimized String to VarChar types ✨ **NEW**
 7. **Data Integrity Constraints** (20250810054013): Added database-level constraints for data validation ✨ **NEW**
+8. **User Memory** (20260701094509): Added UserMemory table for storing personalized user preferences and memories ✨ **NEW**
 
 ### 12. ChatMessage ✨ **UPDATED**
 **Purpose**: Stores AI assistant conversation history for session persistence
@@ -276,6 +280,25 @@ The database has evolved through several migrations:
 **Indexes**:
 - (userId, createdAt) for chronological message retrieval
 - (userId, sessionId) for session-scoped message queries
+
+### 13. UserMemory ✨ **NEW**
+**Purpose**: Stores personalized user preferences, risk profiles, and wishlists/favourites for AI context-awareness
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| id | UUID | PRIMARY KEY | Unique memory identifier |
+| userId | UUID | FOREIGN KEY (CASCADE) | Reference to User |
+| category | VarChar(50) | NOT NULL | Preference category (e.g., "investment_preferences", "risk_profile", "wishlist") |
+| key | VarChar(100) | NOT NULL | Preference key (e.g., "valuation", "tolerance", "stocks") |
+| value | JSON | NOT NULL | Structured preference value (e.g., JSON object or array) |
+| description | VarChar(500) | NULLABLE | Optional description of the preference |
+| createdAt | DateTime | DEFAULT: now() | Creation timestamp |
+| updatedAt | DateTime | AUTO UPDATE | Last update timestamp |
+
+**Unique Constraint**: (userId, category, key)
+**Indexes**:
+- (userId) for user-scoped preference queries
+- (userId, category) for category-scoped preference queries
 
 This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, goal setting, AI-powered financial assistance, and financial reporting capabilities.
 

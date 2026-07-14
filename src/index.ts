@@ -17,6 +17,7 @@ import { scheduleDatabaseMaintenance } from './jobs/database_maintenance.job';
 import reportsRouter from './routes/report.routes';
 import budgetRouter from './routes/budget.route';
 import plannedEventRouter from './routes/planned_event.route';
+import brokerRouter from './routes/broker.route';
 import aiRouter from './ai/routes/ai.route';
 import {
     globalErrorHandler,
@@ -75,6 +76,7 @@ app.use('/goals', authMiddleware, goalRouter);
 app.use("/reports", authMiddleware, reportsRouter);
 app.use("/budgets", authMiddleware, budgetRouter);
 app.use("/planned-events", authMiddleware, plannedEventRouter);
+app.use("/brokers", authMiddleware, brokerRouter);
 app.use("/ai", authMiddleware, aiRateLimit, aiRouter);
 
 // 8. Final error handling middleware (order is important!)

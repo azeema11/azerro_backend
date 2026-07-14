@@ -385,9 +385,40 @@ GET /reports/recurring-transactions - Detect recurring transaction patterns with
 POST /ai/assistant           - Unified finance assistant (handles all financial queries, analysis, and actions via Google ADK)
 ```
 
-**Total: 42 API endpoints** covering all core personal finance functionality ✨ **UPDATED**
+### Brokers & User Memory (10 endpoints) ✨ **UPDATED**
+```
+POST   /brokers/:broker/connect       - Connect a broker (e.g., INDMoney)
+GET    /brokers/indmoney/callback     - OAuth 2.1 callback endpoint (unauthenticated)
+GET    /brokers/:broker/status        - Get connection status of a broker
+POST   /brokers/:broker/sync          - Sync holdings from a broker
+POST   /brokers/:broker/disconnect    - Disconnect a broker
+GET    /brokers/:broker/search        - Search market instruments (stocks/funds)
+GET    /brokers/:broker/instrument/:symbol - Get detailed instrument fundamentals
+GET    /brokers/memory/all            - Get all user memories / preferences
+POST   /brokers/memory/save           - Save or update a user memory / preference
+DELETE /brokers/memory/:category/:key - Delete a specific user memory
+```
+
+**Total: 52 API endpoints** covering all core personal finance functionality ✨ **UPDATED**
 
 ### Recent Enhancements (Latest Updates)
+
+#### 🆕 Broker Integrations & User Memory System ✨ **LATEST UPDATE**
+- ✅ **INDMoney Broker Integration**: Standardized broker connector with connection status, holdings sync, and disconnection handling
+- ✅ **Dynamic Client Registration (DCR)**: Fully registered as an official OAuth client with INDmoney's MCP server (`https://mcp.indmoney.com/register`) using RFC 7591, obtaining a dedicated `client_id` and `client_secret` to bypass Cloudflare WAF blocks.
+- ✅ **URL-Encoded Token Exchange**: Performs secure, server-to-server token exchange and refresh using standard `application/x-www-form-urlencoded` format (RFC 6749) with native `fetch` (no external HTTP clients required).
+- ✅ **Resilient Asset Syncing**: Uses the real **`networth_holdings`** tool to fetch holdings across asset types (`IND_STOCK`, `MF`, `US_STOCK`, `CRYPTO`). Natively handles missing currency fields by falling back to `INR`, and dynamically resolves `unit_price: 0` on crypto assets by calculating prices directly from `market_value / quantity`.
+- ✅ **Factory Pattern for Brokers**: Extensible `getBrokerService` factory to easily add future brokers (Zerodha, Groww, etc.)
+- ✅ **Market Data Fetching**: AI-centric and REST endpoints to search instruments and fetch detailed fundamentals (P/E, PEG, analyst target, news) via INDMoney MCP
+- ✅ **User Memory & Preferences**: Flexible, user-configurable preference storage via `UserMemory` table (stores risk tolerance, valuation limits, sector preferences, wishlists, and favourites)
+- ✅ **Multi-Agent Coordinator Architecture**:
+  - `Azerro` (Main Coordinator): Directs queries to Friday or Jarvis based on intent
+  - `Friday` (Finance Specialist): Handles transactions, budgets, bank accounts, and reports
+  - `Jarvis` (Investment Advisor): Personalizes advice using holdings, wishlist, and user memory preferences
+- ✅ **Agent-Configurable Memory**: Jarvis can dynamically set, update, or retrieve user preferences using `get_user_memory` and `save_user_memory` tools on user demand
+- ✅ **REST API Endpoints**: 10 endpoints for broker connection, unauthenticated OAuth callback, market data search, and user memory CRUD operations
+- ✅ **OAuth 2.1 with PKCE**: Full secure authentication flow using PKCE code challenge/verifier and state validation, with automatic token refresh using native `fetch`
+- ✅ **100% Test Coverage**: Fully mocked unit and integration tests verifying broker factory, user memory service, and coordinator routing
 
 #### 🆕 Currency Rate History System ✨ **MAJOR UPDATE**
 - ✅ **Historical Exchange Rate Storage**: New CurrencyRateHistory table maintains complete rate history
@@ -654,7 +685,9 @@ docker compose down
 | Reports & Analytics | ✅ Complete | 100% | 7 comprehensive reports |
 | Service Layer | ✅ Complete | 100% | Full implementation across all modules |
 | Planned Events | ✅ Complete | 100% | Full implementation with service layer and API endpoints |
-| AI Module | ✅ Complete | 100% | Unified ADK finance assistant with 14 tools (Gemini) ✨ **UPDATED** |
+| Broker Integration | ✅ Complete | 100% | INDMoney connector, holdings sync, and market data fetches ✨ **NEW** |
+| User Memory | ✅ Complete | 100% | User-configurable preferences & memories with agent tools ✨ **NEW** |
+| AI Module | ✅ Complete | 100% | Multi-agent coordinator (Azerro, Friday, Jarvis) with 16 tools ✨ **UPDATED** |
 | Docker Setup | ✅ Complete | 100% | Dual compose files (local + prod), multi-stage Dockerfile, CI/CD deploy |
 
 ## 🚀 Deployment Readiness
