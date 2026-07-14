@@ -48,13 +48,14 @@ jobs:
           VM_NAME: ${{ secrets.VM_NAME }}
           VM_ZONE: ${{ secrets.VM_ZONE }}
           VM_USER: ${{ secrets.VM_USER }}
+          VM_PROJECT_DIRECTORY: ${{ secrets.VM_PROJECT_DIRECTORY }}
         run: |
           # 1. Write environment secrets securely to a temporary file on the runner
           printf "%s" "$ENV_CONTENTS" > .env.contents
           
           # 2. Copy files to VM using gcloud compute scp (with IAP tunnel)
           echo "Copying docker-compose.yml and environment secrets to VM..."
-          gcloud compute scp docker-compose.yml .env.contents $VM_USER@$VM_NAME:/home/azeem/azerro-stack/ \
+          gcloud compute scp docker-compose.yml .env.contents $VM_USER@$VM_NAME:$VM_PROJECT_DIRECTORY/ \
             --zone=$VM_ZONE \
             --tunnel-through-iap \
             --quiet
@@ -70,12 +71,19 @@ jobs:
             --quiet \
             --command="
               set -e
-              cd /home/azeem/azerro-stack
+              cd $VM_PROJECT_DIRECTORY
+              
+              # Ensure .env.contents is removed on exit
+              trap 'rm -f .env.contents' EXIT
+              
+              # Immediately restrict .env.contents to owner-only permissions before it is read
+              chmod 600 .env.contents
               
               # Securely generate .env file using a temporary file under umask 077
               (
                 umask 077
                 temp_env=\$(mktemp .env.tmp.XXXXXX)
+                trap 'rm -f \"\$temp_env\"' EXIT
                 
                 # Read from .env.contents and append IMAGE_TAG
                 cat .env.contents > \"\$temp_env\"
@@ -84,25 +92,61 @@ jobs:
                 # Validate temporary file is not empty and contains the IMAGE_TAG
                 if [ ! -s \"\$temp_env\" ] || ! grep -q 'IMAGE_TAG=' \"\$temp_env\"; then
                   echo 'Error: Generated temporary .env file is invalid or empty'
-                  rm -f \"\$temp_env\"
                   exit 1
                 fi
                 
                 # Atomically replace .env and ensure permissions are 600
                 mv \"\$temp_env\" .env
                 chmod 600 .env
-                rm -f .env.contents
               )
 
               docker-compose pull
               docker-compose up -d
               docker image prune -f
-              sleep 5
-              docker-compose ps
-              if docker-compose ps | grep -q 'Up'; then
-                echo 'Deploy successful - services are running'
+              
+              # Bounded wait for all services to be running and healthy
+              echo 'Checking service readiness...'
+              max_attempts=12
+              attempt=1
+              success=false
+              
+              while [ \$attempt -le \$max_attempts ]; do
+                echo \"Attempt \$attempt of \$max_attempts...\"
+                all_ok=true
+                
+                container_ids=\$(docker-compose ps -q)
+                
+                if [ -z \"\$container_ids\" ]; then
+                  all_ok=false
+                else
+                  for cid in \$container_ids; do
+                    state=\$(docker inspect --format '{{.State.Status}}' \"\$cid\")
+                    health=\$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \"\$cid\")
+                    
+                    if [ \"\$state\" != \"running\" ]; then
+                      echo \"Container \$cid is not running (state: \$state)\"
+                      all_ok=false
+                    elif [ \"\$health\" != \"none\" ] && [ \"\$health\" != \"healthy\" ]; then
+                      echo \"Container \$cid is running but not healthy (health: \$health)\"
+                      all_ok=false
+                    fi
+                  done
+                fi
+                
+                if [ \"\$all_ok\" = \"true\" ]; then
+                  success=true
+                  break
+                fi
+                
+                sleep 5
+                attempt=\$((attempt + 1))
+              done
+              
+              if [ \"\$success\" = \"true\" ]; then
+                echo 'Deploy successful - all services are running and healthy'
               else
-                echo 'Deploy FAILED - services not running'
+                echo 'Deploy FAILED - services not running or unhealthy'
+                docker-compose ps
                 docker-compose logs --tail=30
                 exit 1
               fi
