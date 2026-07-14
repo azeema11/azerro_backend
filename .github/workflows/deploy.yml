@@ -47,6 +47,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          fingerprint: ${{ secrets.VM_FINGERPRINT }}
           source: "docker-compose.yml"
           target: "/home/azeem/azerro-stack"
           overwrite: true
@@ -60,14 +61,30 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          fingerprint: ${{ secrets.VM_FINGERPRINT }}
           envs: ENV_CONTENTS,IMAGE_TAG
           script: |
             set -e
             cd /home/azeem/azerro-stack
-            echo "$ENV_CONTENTS" > .env
-            echo "" >> .env
-            echo "IMAGE_TAG=$IMAGE_TAG" >> .env
-            rm -f deploy.env
+            
+            # Securely generate .env file using a temporary file under umask 077
+            (
+              umask 077
+              temp_env=$(mktemp .env.tmp.XXXXXX)
+              printf "%s\n\nIMAGE_TAG=%s\n" "$ENV_CONTENTS" "$IMAGE_TAG" > "$temp_env"
+              
+              # Validate temporary file is not empty and contains the IMAGE_TAG
+              if [ ! -s "$temp_env" ] || ! grep -q "IMAGE_TAG=" "$temp_env"; then
+                echo "Error: Generated temporary .env file is invalid or empty"
+                rm -f "$temp_env"
+                exit 1
+              fi
+              
+              # Atomically replace .env and ensure permissions are 600
+              mv "$temp_env" .env
+              chmod 600 .env
+            )
+
             docker-compose pull
             docker-compose up -d
             docker image prune -f
