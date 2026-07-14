@@ -23,6 +23,13 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Fetch Environment Secrets
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@v2
+        with:
+          secrets: |-
+            env_contents:projects/${{ secrets.GCP_PROJECT_ID }}/secrets/azerro-backend-env/versions/latest
+
       - name: Configure Docker
         run: |
           gcloud auth configure-docker asia-south1-docker.pkg.dev
@@ -34,18 +41,35 @@ jobs:
             -t asia-south1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/azerro/azerro-backend:${{ github.sha }} \
             --push .
 
-      - name: Deploy to VM
-        uses: appleboy/ssh-action@v1.2.5
+      - name: Copy docker-compose.yml to VM
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "/home/azeem/azerro-stack"
+          overwrite: true
+
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          ENV_CONTENTS: ${{ steps.secrets.outputs.env_contents }}
+          IMAGE_TAG: ${{ github.sha }}
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          envs: ENV_CONTENTS,IMAGE_TAG
           script: |
             set -e
             cd /home/azeem/azerro-stack
-            echo "IMAGE_TAG=${{ github.sha }}" > deploy.env
-            docker-compose --env-file deploy.env pull
-            docker-compose --env-file deploy.env up -d
+            echo "$ENV_CONTENTS" > .env
+            echo "" >> .env
+            echo "IMAGE_TAG=$IMAGE_TAG" >> .env
+            rm -f deploy.env
+            docker-compose pull
+            docker-compose up -d
             docker image prune -f
             sleep 5
             docker-compose ps

@@ -1,12 +1,12 @@
 services:
   redis:
     image: redis:7
-    container_name: azerro-redis-prod
+    container_name: azerro-redis
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
-      - redis-data-prod:/data
+      - redis-data:/data
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -16,15 +16,14 @@ services:
 
   backend:
     image: asia-south1-docker.pkg.dev/azerro/azerro/azerro-backend:${IMAGE_TAG}
-    container_name: azerro-backend-prod
+    container_name: azerro-backend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${PORT:-3000}:3000"
+      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
     env_file:
       - .env
     depends_on:
       redis:
         condition: service_healthy
-
 volumes:
-  redis-data-prod:
+  redis-data:
