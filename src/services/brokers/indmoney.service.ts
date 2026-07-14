@@ -7,7 +7,7 @@ import { convertCurrencyFromDB } from "../../utils/currency";
 import { DomainError } from "../../utils/prisma_errors";
 import crypto from "crypto";
 
-const mcpUrl = "https://mcp.indmoney.com/mcp";
+const mcpUrl = process.env.INDMONEY_MCP_URL || "https://mcp.indmoney.com/mcp";
 
 const INDMONEY_AUTH_URL = process.env.INDMONEY_AUTH_URL;
 const INDMONEY_TOKEN_URL = process.env.INDMONEY_TOKEN_URL;
@@ -165,6 +165,27 @@ async function connect(userId: string, data?: any) {
   }
   const redirectUri = `${baseUrl.replace(/\/$/, "")}/brokers/indmoney/callback`;
 
+  // Cleanup expired PKCE states for this user
+  try {
+    const oldPkceRecords = await prisma.userMemory.findMany({
+      where: {
+        userId,
+        category: "broker_connection_temp",
+        key: { startsWith: "pkce_" },
+      },
+    });
+    for (const record of oldPkceRecords) {
+      const val = record.value as any;
+      if (val && val.expiresAt && new Date(val.expiresAt) < new Date()) {
+        await prisma.userMemory.delete({ where: { id: record.id } }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error("Failed to cleanup expired PKCE states:", err);
+  }
+
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes expiry
+
   // Save the temporary PKCE state in UserMemory (mapped to state)
   // Since we need to query this during callback without userId, we use key: `pkce_${state}`
   await prisma.userMemory.upsert({
@@ -181,6 +202,7 @@ async function connect(userId: string, data?: any) {
         state,
         userId,
         redirectUri,
+        expiresAt,
       },
       description: "Temporary INDMoney PKCE state",
     },
@@ -193,6 +215,7 @@ async function connect(userId: string, data?: any) {
         state,
         userId,
         redirectUri,
+        expiresAt,
       },
       description: "Temporary INDMoney PKCE state",
     },
@@ -227,7 +250,21 @@ export async function handleIndmoneyCallback(code: string, state: string) {
     );
   }
 
-  const { codeVerifier, userId, redirectUri: savedRedirectUri } = tempMemory.value as any;
+  const { codeVerifier, userId, redirectUri: savedRedirectUri, expiresAt } = tempMemory.value as any;
+
+  if (expiresAt && new Date(expiresAt) < new Date()) {
+    // Delete expired PKCE record
+    await prisma.userMemory.delete({
+      where: { id: tempMemory.id },
+    }).catch(() => {});
+
+    throw new DomainError(
+      "Connection session expired. Please try connecting again.",
+      400,
+      "BrokerConnection"
+    );
+  }
+
   const redirectUri = savedRedirectUri || `${process.env.API_BASE_URL}/brokers/indmoney/callback`;
 
   try {
@@ -301,6 +338,11 @@ export async function handleIndmoneyCallback(code: string, state: string) {
 
     return { success: true, userId };
   } catch (error: any) {
+    // Delete the temporary PKCE record on failure to prevent leaks
+    await prisma.userMemory.delete({
+      where: { id: tempMemory.id },
+    }).catch(() => {});
+
     console.error("Failed to exchange INDMoney auth code:", error.response?.data || error.message || error);
     throw new DomainError(
       `INDMoney token exchange failed: ${error.response?.data?.error_description || error.message || error}`,
@@ -606,9 +648,18 @@ async function syncHoldings(userId: string) {
   });
   const baseCurrency = user?.baseCurrency || "INR";
 
+  // Precompute and cache conversion rates for each unique holdingCurrency -> baseCurrency pair
+  const uniqueCurrencies = Array.from(new Set(rawHoldings.map((h) => h.holdingCurrency ?? "INR")));
+  const rateMap = new Map<string, number>();
+  await Promise.all(
+    uniqueCurrencies.map(async (currency) => {
+      const rate = await convertCurrencyFromDB(1, currency, baseCurrency);
+      rateMap.set(currency, rate);
+    })
+  );
+
   // Prepare all upsert data first
-  const upsertDataList: any[] = [];
-  for (const h of rawHoldings) {
+  const upsertDataList = rawHoldings.map((h) => {
     // Detect if it's a real holding from MCP or a mock holding
     const isReal = h.investment_code !== undefined;
 
@@ -653,15 +704,12 @@ async function syncHoldings(userId: string) {
     let finalLastPrice = lastPrice;
     let finalAvgCost = avgCost;
 
-    // Convert values to baseCurrency
+    // Convert values to baseCurrency using precomputed rate
     const totalValueInHoldingCurrency = quantity * finalLastPrice;
-    const convertedValue = await convertCurrencyFromDB(
-      totalValueInHoldingCurrency,
-      holdingCurrency,
-      baseCurrency
-    );
+    const rate = rateMap.get(holdingCurrency) ?? 1;
+    const convertedValue = totalValueInHoldingCurrency * rate;
 
-    upsertDataList.push({
+    return {
       ticker,
       assetType,
       name,
@@ -670,8 +718,8 @@ async function syncHoldings(userId: string) {
       holdingCurrency,
       finalLastPrice,
       convertedValue,
-    });
-  }
+    };
+  });
 
   // Run database operations inside a Prisma transaction
   await prisma.$transaction(async (tx) => {

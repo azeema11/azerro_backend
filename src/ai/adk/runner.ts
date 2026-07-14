@@ -22,6 +22,32 @@ const ACTION_TOOL_NAMES = new Set([
 // Map to track executed actions from sub-assistants during a parent run
 const activeParentSessionActions = new Map<string, ExecutedAction[]>();
 
+function trackToolCalls(
+  event: any,
+  pendingCalls: Map<string, { tool: string; args: Record<string, unknown> }>,
+  executedActions: ExecutedAction[]
+): void {
+  for (const fc of getFunctionCalls(event)) {
+    if (fc.name && ACTION_TOOL_NAMES.has(fc.name)) {
+      pendingCalls.set(fc.id || fc.name, {
+        tool: fc.name,
+        args: (fc.args as Record<string, unknown>) || {},
+      });
+    }
+  }
+
+  for (const fr of getFunctionResponses(event)) {
+    const pending = pendingCalls.get(fr.id || fr.name || "");
+    if (pending) {
+      executedActions.push({
+        ...pending,
+        result: fr.response,
+      });
+      pendingCalls.delete(fr.id || fr.name || "");
+    }
+  }
+}
+
 const azerroRunner = new InMemoryRunner({
   agent: azerroAssistant,
   appName: APP_NAME,
@@ -68,33 +94,6 @@ export async function runAssistant(
   const invocationId = `inv_${crypto.randomBytes(16).toString("hex")}`;
   activeParentSessionActions.set(invocationId, []);
 
-  let sessionExists = false;
-  try {
-    const existing = await azerroRunner.sessionService.getSession({
-      appName: APP_NAME,
-      userId,
-      sessionId: sid,
-    });
-    sessionExists = !!existing;
-  } catch {
-    sessionExists = false;
-  }
-
-  if (!sessionExists) {
-    const session = await azerroRunner.sessionService.createSession({
-      appName: APP_NAME,
-      userId,
-      sessionId: sid,
-      state: {
-        "userId": userId,
-        "sessionId": sid,
-      },
-    });
-
-    await seedSessionFromDb(session, userId, sid, azerroAssistant.name);
-  }
-
-  const userContent = createUserContent(message);
   const collectedEvents: AssistantResponse["events"] = [];
   const executedActions: ExecutedAction[] = [];
   let finalText = "";
@@ -102,6 +101,34 @@ export async function runAssistant(
   const pendingCalls = new Map<string, { tool: string; args: Record<string, unknown> }>();
 
   try {
+    let sessionExists = false;
+    try {
+      const existing = await azerroRunner.sessionService.getSession({
+        appName: APP_NAME,
+        userId,
+        sessionId: sid,
+      });
+      sessionExists = !!existing;
+    } catch {
+      sessionExists = false;
+    }
+
+    if (!sessionExists) {
+      const session = await azerroRunner.sessionService.createSession({
+        appName: APP_NAME,
+        userId,
+        sessionId: sid,
+        state: {
+          "userId": userId,
+          "sessionId": sid,
+        },
+      });
+
+      await seedSessionFromDb(azerroRunner, session, userId, sid, azerroAssistant.name);
+    }
+
+    const userContent = createUserContent(message);
+
     for await (const event of azerroRunner.runAsync({
       userId,
       sessionId: sid,
@@ -125,25 +152,7 @@ export async function runAssistant(
         }
       }
 
-      for (const fc of getFunctionCalls(event)) {
-        if (fc.name && ACTION_TOOL_NAMES.has(fc.name)) {
-          pendingCalls.set(fc.id || fc.name, {
-            tool: fc.name,
-            args: (fc.args as Record<string, unknown>) || {},
-          });
-        }
-      }
-
-      for (const fr of getFunctionResponses(event)) {
-        const pending = pendingCalls.get(fr.id || fr.name || "");
-        if (pending) {
-          executedActions.push({
-            ...pending,
-            result: fr.response,
-          });
-          pendingCalls.delete(fr.id || fr.name || "");
-        }
-      }
+      trackToolCalls(event, pendingCalls, executedActions);
     }
   } finally {
     // Retrieve and merge any actions executed by sub-assistants (Friday/Jarvis) during this run
@@ -268,25 +277,7 @@ async function runSubAssistant(
       }
     }
 
-    for (const fc of getFunctionCalls(event)) {
-      if (fc.name && ACTION_TOOL_NAMES.has(fc.name)) {
-        pendingCalls.set(fc.id || fc.name, {
-          tool: fc.name,
-          args: (fc.args as Record<string, unknown>) || {},
-        });
-      }
-    }
-
-    for (const fr of getFunctionResponses(event)) {
-      const pending = pendingCalls.get(fr.id || fr.name || "");
-      if (pending) {
-        executedActions.push({
-          ...pending,
-          result: fr.response,
-        });
-        pendingCalls.delete(fr.id || fr.name || "");
-      }
-    }
+    trackToolCalls(event, pendingCalls, executedActions);
   }
 
   if (!finalText && collectedEvents.length > 0) {
@@ -313,6 +304,7 @@ async function runSubAssistant(
  * back to the most recent assistant messages for this user.
  */
 async function seedSessionFromDb(
+  runner: any,
   session: any,
   userId: string,
   sessionId: string,
@@ -334,7 +326,7 @@ async function seedSessionFromDb(
         content,
       });
 
-      await azerroRunner.sessionService.appendEvent({ session, event });
+      await runner.sessionService.appendEvent({ session, event });
     }
   } catch (err) {
     console.error("Failed to seed session from DB:", err);

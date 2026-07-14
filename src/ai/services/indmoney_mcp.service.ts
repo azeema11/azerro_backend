@@ -1,9 +1,9 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import prisma from "../../utils/db";
-import { getAccessToken } from "../../services/brokers/indmoney.service";
+import { getAccessToken, indmoneyService } from "../../services/brokers/indmoney.service";
 
-const mcpUrl = "https://mcp.indmoney.com/mcp";
+const mcpUrl = process.env.INDMONEY_MCP_URL || "https://mcp.indmoney.com/mcp";
 
 async function createMcpClient(token: string): Promise<Client> {
   const client = new Client({ name: "azerro-ai-client", version: "1.0.0" }, { capabilities: {} });
@@ -18,28 +18,20 @@ async function createMcpClient(token: string): Promise<Client> {
  * Checks connection status of INDMoney broker.
  */
 async function getConnectionStatus(userId: string) {
-  const memory = await prisma.userMemory.findUnique({
-    where: {
-      userId_category_key: {
-        userId,
-        category: "broker_connection",
-        key: "indmoney",
-      },
-    },
-  });
-
-  if (!memory || !(memory.value as any).connected) {
+  try {
+    const status = await indmoneyService.getStatus(userId);
+    if (!status.connected) {
+      return { connected: false };
+    }
+    const token = await getAccessToken(userId);
+    return {
+      connected: true,
+      token,
+      mode: status.metadata?.mode || "real",
+    };
+  } catch {
     return { connected: false };
   }
-
-  const mode = (memory.value as any).mode || "real";
-  const token = mode === "mock" ? (memory.value as any).accessToken : await getAccessToken(userId);
-
-  return {
-    connected: true,
-    token,
-    mode,
-  };
 }
 
 /**
@@ -69,8 +61,9 @@ export async function searchInstrument(userId: string, query: string): Promise<a
   }
 
   // Real MCP call
+  let client: Client | null = null;
   try {
-    const client = await createMcpClient(status.token!);
+    client = await createMcpClient(status.token!);
 
     // Try searching in IN_STOCKS first, then US_STOCKS
     const filterTypes = ["IN_STOCKS", "US_STOCKS"];
@@ -115,11 +108,14 @@ export async function searchInstrument(userId: string, query: string): Promise<a
       throw lastError;
     }
 
-    await client.close();
     return matches;
   } catch (error: any) {
     console.error("Failed to search instrument via INDMoney MCP:", error.message || error);
     throw new Error(`INDMoney search failed: ${error.message || error}`);
+  } finally {
+    if (client) {
+      await client.close().catch(() => {});
+    }
   }
 }
 
@@ -229,8 +225,9 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
   }
 
   // Real MCP call
+  let client: Client | null = null;
   try {
-    const client = await createMcpClient(status.token!);
+    client = await createMcpClient(status.token!);
 
     let details: any = null;
 
@@ -324,10 +321,13 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
       }
     }
 
-    await client.close();
     return details;
   } catch (error: any) {
     console.error("Failed to fetch instrument details via INDMoney MCP:", error.message || error);
     throw new Error(`INDMoney fetch details failed: ${error.message || error}`);
+  } finally {
+    if (client) {
+      await client.close().catch(() => {});
+    }
   }
 }

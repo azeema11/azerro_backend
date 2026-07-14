@@ -1,5 +1,6 @@
 import { IBrokerService } from "./types";
 import { indmoneyService } from "./indmoney.service";
+import { DomainError } from "../../utils/prisma_errors";
 
 const services: Record<string, IBrokerService> = {};
 
@@ -15,5 +16,5 @@ export function getBrokerService(broker: string): IBrokerService {
     }
     return services[b];
   }
-  throw new Error(`Broker '${broker}' is not supported.`);
+  throw new DomainError(`Broker '${broker}' is not supported.`, 400, "BrokerConnection");
 }

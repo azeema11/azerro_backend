@@ -1,6 +1,6 @@
 import { LlmAgent } from "@google/adk";
 import { getModelConfig } from "../model_config";
-import { dataTools } from "../tools/data_tools";
+import { getHoldingsTool, getBankAccountsTool } from "../tools/data_tools";
 import { memoryTools } from "../tools/memory_tools";
 import { marketTools } from "../tools/market_tools";
 
@@ -47,5 +47,5 @@ export const investmentAssistant = new LlmAgent({
   model,
   description: "Jarvis personalized investment advice AI assistant.",
   instruction: SYSTEM_INSTRUCTION,
-  tools: [...dataTools, ...memoryTools, ...marketTools],
+  tools: [getHoldingsTool, getBankAccountsTool, ...memoryTools, ...marketTools],
 });

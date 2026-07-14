@@ -1,4 +1,5 @@
 import prisma from "../../utils/db";
+import { DomainError } from "../../utils/prisma_errors";
 
 export interface SaveMemoryInput {
   category: string;
@@ -41,6 +42,17 @@ export async function getMemory(userId: string, category: string, key: string) {
  */
 export async function saveMemory(userId: string, input: SaveMemoryInput) {
   const { category, key, value, description } = input;
+
+  if (category.length > 50) {
+    throw new DomainError("Category exceeds maximum length of 50 characters.", 400, "UserMemory");
+  }
+  if (key.length > 100) {
+    throw new DomainError("Key exceeds maximum length of 100 characters.", 400, "UserMemory");
+  }
+  if (description && description.length > 500) {
+    throw new DomainError("Description exceeds maximum length of 500 characters.", 400, "UserMemory");
+  }
+
   return prisma.userMemory.upsert({
     where: {
       userId_category_key: {

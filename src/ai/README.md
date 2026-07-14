@@ -194,4 +194,4 @@ AI endpoints are protected by the rate-limit middleware:
 
 ## Future Extensions
 
-The `src/ai/adk/assistant/` folder is structured for multiple assistants. Future assistants (e.g. `investment.assistant.ts`, `tax.assistant.ts`) can be added alongside `finance.assistant.ts` and wired to separate or shared endpoints.
+The `src/ai/adk/assistants/` folder is structured for multiple assistants. Future assistants (e.g. `tax.assistant.ts`) can be added alongside `finance.assistant.ts` and `investment.assistant.ts` and wired to separate or shared endpoints.

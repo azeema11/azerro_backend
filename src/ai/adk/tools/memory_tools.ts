@@ -1,6 +1,7 @@
 import { FunctionTool, Context } from "@google/adk";
 import { z } from "zod";
 import { getMemories, saveMemory } from "../../services/user_memory.service";
+import { UserMemory } from "@prisma/client";
 
 function getUserId(ctx?: Context): string {
   const userId = ctx?.state.get<string>("userId");
@@ -21,7 +22,7 @@ export const getUserMemoryTool = new FunctionTool({
     try {
       const memories = await getMemories(userId, input.category);
       return {
-        memories: memories.map((m: { category: any; key: any; value: any; description: any; updatedAt: any; }) => ({
+        memories: memories.map((m: UserMemory) => ({
           category: m.category,
           key: m.key,
           value: m.value,
@@ -62,7 +63,7 @@ export const saveUserMemoryTool = new FunctionTool({
       };
     } catch (err: any) {
       console.error("Error in save_user_memory tool:", err);
-      return { error: "Failed to save user memory. Please try again later." };
+      return { error: err.message || "Failed to save user memory. Please try again later." };
     }
   },
 });

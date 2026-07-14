@@ -5,11 +5,18 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  const url = "https://mcp.indmoney.com/mcp";
-  console.log(`Probing INDMoney MCP server at ${url}...`);
+  const userId = process.argv[2];
+  if (!userId) {
+    console.error("Error: Please provide a userId as the first argument.");
+    console.error("Usage: npx ts-node src/scripts/probe_indmoney.ts <userId>");
+    process.exit(1);
+  }
+
+  const url = process.env.INDMONEY_MCP_URL || "https://mcp.indmoney.com/mcp";
+  console.log(`Probing INDMoney MCP server at ${url} for user ${userId}...`);
 
   const connection = await prisma.userMemory.findFirst({
-    where: { category: "broker_connection", key: "indmoney" },
+    where: { userId, category: "broker_connection", key: "indmoney" },
   });
 
   if (!connection) {
