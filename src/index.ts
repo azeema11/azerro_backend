@@ -76,7 +76,7 @@ app.use('/goals', authMiddleware, goalRouter);
 app.use("/reports", authMiddleware, reportsRouter);
 app.use("/budgets", authMiddleware, budgetRouter);
 app.use("/planned-events", authMiddleware, plannedEventRouter);
-app.use("/brokers", authMiddleware, brokerRouter);
+app.use("/brokers", brokerRouter);
 app.use("/ai", authMiddleware, aiRateLimit, aiRouter);
 
 // 8. Final error handling middleware (order is important!)
