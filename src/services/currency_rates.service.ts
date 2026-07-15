@@ -241,10 +241,138 @@ export async function ensureCurrencyRatesExist() {
 }
 
 /**
+ * Find the closest common historical date where both targets have records in currencyRateHistory
+ */
+async function findCommonHistoricalDate(from: string, to: string, targetDate: Date): Promise<Date | null> {
+    // 1. Try exact date
+    const countExact = await prisma.currencyRateHistory.count({
+        where: {
+            rateDate: targetDate,
+            base: 'USD',
+            target: { in: [from, to] }
+        }
+    });
+    if (countExact === 2) {
+        return targetDate;
+    }
+
+    // 2. Find the most recent date <= targetDate where both exist
+    const pastDates = await prisma.currencyRateHistory.findMany({
+        where: {
+            rateDate: { lte: targetDate },
+            base: 'USD',
+            target: from
+        },
+        orderBy: { rateDate: 'desc' },
+        select: { rateDate: true },
+        take: 10
+    });
+
+    for (const d of pastDates) {
+        const count = await prisma.currencyRateHistory.count({
+            where: {
+                rateDate: d.rateDate,
+                base: 'USD',
+                target: to
+            }
+        });
+        if (count > 0) {
+            return d.rateDate;
+        }
+    }
+
+    // 3. Find the closest future date >= targetDate where both exist
+    const futureDates = await prisma.currencyRateHistory.findMany({
+        where: {
+            rateDate: { gte: targetDate },
+            base: 'USD',
+            target: from
+        },
+        orderBy: { rateDate: 'asc' },
+        select: { rateDate: true },
+        take: 10
+    });
+
+    for (const d of futureDates) {
+        const count = await prisma.currencyRateHistory.count({
+            where: {
+                rateDate: d.rateDate,
+                base: 'USD',
+                target: to
+            }
+        });
+        if (count > 0) {
+            return d.rateDate;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Helper to fetch a single historical USD -> target rate with fallbacks and validation
+ */
+async function getHistoricalUSDToTargetRate(target: string, targetDate: Date): Promise<number> {
+    if (target === 'USD') return 1.0;
+
+    const pairFilter = { base: 'USD', target };
+
+    // 1. Exact date lookup
+    let record = await prisma.currencyRateHistory.findFirst({
+        where: { rateDate: targetDate, ...pairFilter },
+    });
+    if (record) {
+        const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+        if (Number.isFinite(rate) && rate > 0) {
+            return rate;
+        }
+    }
+
+    // 2. Fallback lookup (lte targetDate)
+    const pastRecords = await prisma.currencyRateHistory.findMany({
+        where: { rateDate: { lte: targetDate }, ...pairFilter },
+        orderBy: { rateDate: 'desc' },
+        take: 5,
+    });
+    for (const r of pastRecords) {
+        const rate = typeof r.rate === 'number' ? r.rate : r.rate.toNumber();
+        if (Number.isFinite(rate) && rate > 0) {
+            return rate;
+        }
+    }
+
+    // 3. Fallback lookup (gte targetDate)
+    const futureRecords = await prisma.currencyRateHistory.findMany({
+        where: { rateDate: { gte: targetDate }, ...pairFilter },
+        orderBy: { rateDate: 'asc' },
+        take: 5,
+    });
+    for (const r of futureRecords) {
+        const rate = typeof r.rate === 'number' ? r.rate : r.rate.toNumber();
+        if (Number.isFinite(rate) && rate > 0) {
+            return rate;
+        }
+    }
+
+    // 4. Current rate fallback
+    const currentRate = await prisma.currencyRate.findUnique({
+        where: { base_target: { base: 'USD', target } }
+    });
+    if (currentRate) {
+        const rate = typeof currentRate.rate === 'number' ? currentRate.rate : currentRate.rate.toNumber();
+        if (Number.isFinite(rate) && rate > 0) {
+            return rate;
+        }
+    }
+
+    throw new Error(`No exchange rate found from USD to ${target}. Ensure currency rates have been initialized.`);
+}
+
+/**
  * Get historical exchange rate for a specific date
  * Falls back to closest previous available date if exact date not found
  * Falls back to current rates if no historical data is available
- * Supports inverse rate calculation (e.g., INR->USD from USD->INR)
+ * Supports cross-currency derivation using USD-based rates stored in DB
  */
 export async function getHistoricalExchangeRate(
     from: string,
@@ -262,61 +390,81 @@ export async function getHistoricalExchangeRate(
         const cached = await safeGet(cacheKey);
         if (cached) {
             const num = parseFloat(cached);
-            if (!isNaN(num)) return num;
+            if (Number.isFinite(num) && num > 0) return num;
         }
 
-        const calculateRate = (record: { base: string; rate: any }): number => {
-            const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
-            return record.base === from ? rate : (1 / rate);
-        };
+        let rate: number;
+
+        if (from === 'USD') {
+            rate = await getHistoricalUSDToTargetRate(to, targetDate);
+        } else if (to === 'USD') {
+            const baseRate = await getHistoricalUSDToTargetRate(from, targetDate);
+            if (!Number.isFinite(baseRate) || baseRate <= 0) {
+                throw new Error(`Invalid historical exchange rate of ${baseRate} from USD to ${from} on ${dateStr}.`);
+            }
+            rate = 1 / baseRate;
+        } else {
+            // Derived rate: from -> to = (USD -> to) / (USD -> from)
+            // Select the common applicable rateDate first, then fetch both targets using that date
+            const commonDate = await findCommonHistoricalDate(from, to, targetDate);
+
+            let rateUSDToFrom: number;
+            let rateUSDToTo: number;
+
+            if (commonDate) {
+                const fromRecord = await prisma.currencyRateHistory.findFirst({
+                    where: { rateDate: commonDate, base: 'USD', target: from }
+                });
+                const toRecord = await prisma.currencyRateHistory.findFirst({
+                    where: { rateDate: commonDate, base: 'USD', target: to }
+                });
+
+                if (!fromRecord || !toRecord) {
+                    throw new Error(`Failed to load historical records on common date ${commonDate.toISOString().split('T')[0]}`);
+                }
+
+                rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
+                rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
+            } else {
+                // Fallback to current rates (which is a single shared current snapshot)
+                const fromRecord = await prisma.currencyRate.findUnique({
+                    where: { base_target: { base: 'USD', target: from } }
+                });
+                const toRecord = await prisma.currencyRate.findUnique({
+                    where: { base_target: { base: 'USD', target: to } }
+                });
+
+                if (!fromRecord || !toRecord) {
+                    throw new Error(`No current exchange rates found to derive ${from} to ${to}. Ensure currency rates are initialized.`);
+                }
+
+                rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
+                rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
+            }
+
+            if (!Number.isFinite(rateUSDToFrom) || rateUSDToFrom <= 0) {
+                throw new Error(`Invalid historical exchange rate of ${rateUSDToFrom} from USD to ${from}.`);
+            }
+            if (!Number.isFinite(rateUSDToTo) || rateUSDToTo <= 0) {
+                throw new Error(`Invalid historical exchange rate of ${rateUSDToTo} from USD to ${to}.`);
+            }
+
+            rate = rateUSDToTo / rateUSDToFrom;
+        }
+
+        if (!Number.isFinite(rate) || rate <= 0) {
+            throw new Error(`Invalid computed historical exchange rate of ${rate} from ${from} to ${to} on ${dateStr}.`);
+        }
 
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         const isHistorical = targetDate.getTime() < today.getTime();
         const ttl = isHistorical
-            ? 604800
+            ? 604800 // Cache historical rates for 7 days
             : Math.max(1, Math.floor(((new Date(today.getTime() + 86400000)).getTime() - Date.now()) / 1000));
 
-        const cacheAndReturn = async (record: { base: string; rate: any }) => {
-            const rate = calculateRate(record);
-            await safeSetex(cacheKey, ttl, rate);
-            return rate;
-        };
-
-        const pairFilter = {
-            OR: [
-                { base: from, target: to },
-                { base: to, target: from },
-            ],
-        };
-
-        let record = await prisma.currencyRateHistory.findFirst({
-            where: { rateDate: targetDate, ...pairFilter },
-        });
-        if (record) return cacheAndReturn(record);
-
-        record = await prisma.currencyRateHistory.findFirst({
-            where: { rateDate: { lte: targetDate }, ...pairFilter },
-            orderBy: { rateDate: 'desc' },
-        });
-        if (record) return cacheAndReturn(record);
-
-        record = await prisma.currencyRateHistory.findFirst({
-            where: { rateDate: { gte: targetDate }, ...pairFilter },
-            orderBy: { rateDate: 'asc' },
-        });
-        if (record) return cacheAndReturn(record);
-
-        const currentRate = await prisma.currencyRate.findFirst({ where: pairFilter });
-        if (currentRate) {
-            console.log(`Using current rate for ${from} to ${to} (no historical data for ${dateStr})`);
-            return cacheAndReturn(currentRate);
-        }
-
-        throw new Error(
-            `No exchange rate found for ${from} to ${to}. ` +
-            `Ensure currency rates have been initialized.`
-        );
+        await safeSetex(cacheKey, ttl, rate);
+        return rate;
     } catch (error) {
         console.error(`Error getting historical exchange rate from ${from} to ${to} for ${date}:`, error);
         throw error;
