@@ -50,31 +50,28 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
           VM_PROJECT_DIRECTORY: ${{ secrets.VM_PROJECT_DIRECTORY }}
         run: |
+          # Ensure local temporary file is cleaned up on runner exit
+          trap 'rm -f .env.contents' EXIT
+          
           # 1. Write environment secrets securely to a temporary file on the runner
           printf "%s" "$ENV_CONTENTS" > .env.contents
           
-          # 2. Copy files to VM using gcloud compute scp (with IAP tunnel)
-          echo "Copying docker-compose.yml and environment secrets to VM..."
-          gcloud compute scp docker-compose.yml .env.contents $VM_USER@$VM_NAME:$VM_PROJECT_DIRECTORY/ \
-            --zone=$VM_ZONE \
-            --tunnel-through-iap \
-            --quiet
-          
-          # Clean up local temporary file
-          rm -f .env.contents
-            
-          # 3. Run deploy script using gcloud compute ssh (with IAP tunnel)
-          echo "Running deploy script on VM..."
-          gcloud compute ssh $VM_USER@$VM_NAME \
+          # 2. Package files, transfer them, and run the deploy script in a SINGLE SSH connection
+          echo "Connecting to VM and deploying..."
+          tar -cf - docker-compose.yml .env.contents | gcloud compute ssh $VM_USER@$VM_NAME \
             --zone=$VM_ZONE \
             --tunnel-through-iap \
             --quiet \
             --command="
               set -e
+              
               cd $VM_PROJECT_DIRECTORY
               
               # Ensure .env.contents is removed on exit
               trap 'rm -f .env.contents' EXIT
+              
+              # Extract files
+              tar -xf - -C $VM_PROJECT_DIRECTORY
               
               # Immediately restrict .env.contents to owner-only permissions before it is read
               chmod 600 .env.contents
