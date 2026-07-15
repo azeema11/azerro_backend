@@ -53,24 +53,17 @@ jobs:
           # 1. Write environment secrets securely to a temporary file on the runner
           printf "%s" "$ENV_CONTENTS" > .env.contents
           
-          # 2. Copy files to VM using gcloud compute scp (with IAP tunnel)
-          echo "Copying docker-compose.yml and environment secrets to VM..."
-          gcloud compute scp docker-compose.yml .env.contents $VM_USER@$VM_NAME:$VM_PROJECT_DIRECTORY/ \
-            --zone=$VM_ZONE \
-            --tunnel-through-iap \
-            --quiet
-          
-          # Clean up local temporary file
-          rm -f .env.contents
-            
-          # 3. Run deploy script using gcloud compute ssh (with IAP tunnel)
-          echo "Running deploy script on VM..."
-          gcloud compute ssh $VM_USER@$VM_NAME \
+          # 2. Package files, transfer them, and run the deploy script in a SINGLE SSH connection
+          echo "Connecting to VM and deploying..."
+          tar -cf - docker-compose.yml .env.contents | gcloud compute ssh $VM_USER@$VM_NAME \
             --zone=$VM_ZONE \
             --tunnel-through-iap \
             --quiet \
             --command="
               set -e
+              
+              # Extract files
+              tar -xf - -C $VM_PROJECT_DIRECTORY
               cd $VM_PROJECT_DIRECTORY
               
               # Ensure .env.contents is removed on exit
@@ -151,3 +144,6 @@ jobs:
                 exit 1
               fi
             "
+          
+          # Clean up local temporary file on runner
+          rm -f .env.contents
