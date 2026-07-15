@@ -13,7 +13,7 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
   const cached = await safeGet(cacheKey);
   if (cached) {
     const num = parseFloat(cached);
-    if (!isNaN(num)) return num;
+    if (Number.isFinite(num) && num > 0) return num;
   }
 
   let rate: number;
@@ -28,6 +28,9 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
       throw new Error(`Missing current exchange rate from USD to ${to}. Ensure currency rates are properly initialized.`);
     }
     rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error(`Invalid exchange rate of ${rate} from USD to ${to}.`);
+    }
   } else if (to === 'USD') {
     const record = await prisma.currencyRate.findUnique({
       where: {
@@ -38,8 +41,8 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
       throw new Error(`Missing current exchange rate from USD to ${from}. Ensure currency rates are properly initialized.`);
     }
     const baseRate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
-    if (baseRate === 0) {
-      throw new Error(`Invalid exchange rate of 0 from USD to ${from}.`);
+    if (!Number.isFinite(baseRate) || baseRate <= 0) {
+      throw new Error(`Invalid exchange rate of ${baseRate} from USD to ${from}.`);
     }
     rate = 1 / baseRate;
   } else {
@@ -64,15 +67,29 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
     const rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
     const rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
 
-    if (rateUSDToFrom === 0) {
-      throw new Error(`Invalid exchange rate of 0 from USD to ${from}.`);
+    if (!Number.isFinite(rateUSDToFrom) || rateUSDToFrom <= 0) {
+      throw new Error(`Invalid exchange rate of ${rateUSDToFrom} from USD to ${from}.`);
+    }
+    if (!Number.isFinite(rateUSDToTo) || rateUSDToTo <= 0) {
+      throw new Error(`Invalid exchange rate of ${rateUSDToTo} from USD to ${to}.`);
     }
 
     rate = rateUSDToTo / rateUSDToFrom;
   }
 
-  await safeSetex(cacheKey, 86400, rate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error(`Invalid computed exchange rate of ${rate} from ${from} to ${to}.`);
+  }
+
+  await safeSetex(cacheKey, getSecondsUntilMidnight(), rate);
   return rate;
+}
+
+function getSecondsUntilMidnight(): number {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setUTCHours(24, 0, 0, 0);
+  return Math.max(1, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
 }
 
 /**
@@ -216,7 +233,7 @@ export async function batchConvertCurrency(
           const cachedRate = cachedRates[i];
           if (cachedRate) {
               const numRate = parseFloat(cachedRate);
-              if (!isNaN(numRate)) {
+              if (Number.isFinite(numRate) && numRate > 0) {
                   rateMap.set(from, numRate);
                   continue;
               }
@@ -244,7 +261,9 @@ export async function batchConvertCurrency(
 
               for (const record of rateRecords) {
                 const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
-                usdRatesMap.set(record.target, rate);
+                if (Number.isFinite(rate) && rate > 0) {
+                    usdRatesMap.set(record.target, rate);
+                }
               }
           }
 
@@ -254,13 +273,13 @@ export async function batchConvertCurrency(
 
               if (from === 'USD') {
                   const baseRate = usdRatesMap.get(baseCurrency);
-                  if (baseRate === undefined) {
+                  if (baseRate === undefined || !Number.isFinite(baseRate) || baseRate <= 0) {
                       throw new Error(`Missing current exchange rate from USD to ${baseCurrency}. Ensure currency rates are properly initialized.`);
                   }
                   rate = baseRate;
               } else if (baseCurrency === 'USD') {
                   const baseRate = usdRatesMap.get(from);
-                  if (baseRate === undefined || baseRate === 0) {
+                  if (baseRate === undefined || !Number.isFinite(baseRate) || baseRate <= 0) {
                       throw new Error(`Missing or invalid current exchange rate from USD to ${from}. Ensure currency rates are properly initialized.`);
                   }
                   rate = 1 / baseRate;
@@ -268,7 +287,7 @@ export async function batchConvertCurrency(
                   const rateUSDToFrom = usdRatesMap.get(from);
                   const rateUSDToTo = usdRatesMap.get(baseCurrency);
 
-                  if (rateUSDToFrom === undefined || rateUSDToTo === undefined || rateUSDToFrom === 0) {
+                  if (rateUSDToFrom === undefined || rateUSDToTo === undefined || !Number.isFinite(rateUSDToFrom) || rateUSDToFrom <= 0 || !Number.isFinite(rateUSDToTo) || rateUSDToTo <= 0) {
                       throw new Error(
                           `Missing current exchange rates to derive ${from} to ${baseCurrency}. ` +
                           `Required USD->${from} and USD->${baseCurrency}. Ensure currency rates are properly initialized.`
@@ -277,9 +296,13 @@ export async function batchConvertCurrency(
                   rate = rateUSDToTo / rateUSDToFrom;
               }
 
+              if (!Number.isFinite(rate) || rate <= 0) {
+                  throw new Error(`Invalid computed exchange rate of ${rate} from ${from} to ${baseCurrency}.`);
+              }
+
               rateMap.set(from, rate);
-              // Cache in Redis for 1 day
-              await safeSetex(`rate:${from}:${baseCurrency}`, 86400, rate);
+              // Cache in Redis expiring at next UTC midnight
+              await safeSetex(`rate:${from}:${baseCurrency}`, getSecondsUntilMidnight(), rate);
           }
       }
   }
