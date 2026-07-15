@@ -241,10 +241,45 @@ export async function ensureCurrencyRatesExist() {
 }
 
 /**
+ * Helper to fetch a single historical USD -> target rate with fallbacks
+ */
+async function getHistoricalUSDToTargetRate(target: string, targetDate: Date): Promise<number> {
+    if (target === 'USD') return 1.0;
+
+    const pairFilter = { base: 'USD', target };
+
+    let record = await prisma.currencyRateHistory.findFirst({
+        where: { rateDate: targetDate, ...pairFilter },
+    });
+    if (record) return typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+
+    record = await prisma.currencyRateHistory.findFirst({
+        where: { rateDate: { lte: targetDate }, ...pairFilter },
+        orderBy: { rateDate: 'desc' },
+    });
+    if (record) return typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+
+    record = await prisma.currencyRateHistory.findFirst({
+        where: { rateDate: { gte: targetDate }, ...pairFilter },
+        orderBy: { rateDate: 'asc' },
+    });
+    if (record) return typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+
+    const currentRate = await prisma.currencyRate.findUnique({
+        where: { base_target: { base: 'USD', target } }
+    });
+    if (currentRate) {
+        return typeof currentRate.rate === 'number' ? currentRate.rate : currentRate.rate.toNumber();
+    }
+
+    throw new Error(`No exchange rate found from USD to ${target}. Ensure currency rates have been initialized.`);
+}
+
+/**
  * Get historical exchange rate for a specific date
  * Falls back to closest previous available date if exact date not found
  * Falls back to current rates if no historical data is available
- * Supports inverse rate calculation (e.g., INR->USD from USD->INR)
+ * Supports cross-currency derivation using USD-based rates stored in DB
  */
 export async function getHistoricalExchangeRate(
     from: string,
@@ -265,58 +300,36 @@ export async function getHistoricalExchangeRate(
             if (!isNaN(num)) return num;
         }
 
-        const calculateRate = (record: { base: string; rate: any }): number => {
-            const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
-            return record.base === from ? rate : (1 / rate);
-        };
+        let rate: number;
+
+        if (from === 'USD') {
+            rate = await getHistoricalUSDToTargetRate(to, targetDate);
+        } else if (to === 'USD') {
+            const baseRate = await getHistoricalUSDToTargetRate(from, targetDate);
+            if (baseRate === 0) {
+                throw new Error(`Invalid historical exchange rate of 0 from USD to ${from} on ${dateStr}.`);
+            }
+            rate = 1 / baseRate;
+        } else {
+            // Derived rate: from -> to = (USD -> to) / (USD -> from)
+            const rateUSDToFrom = await getHistoricalUSDToTargetRate(from, targetDate);
+            const rateUSDToTo = await getHistoricalUSDToTargetRate(to, targetDate);
+
+            if (rateUSDToFrom === 0) {
+                throw new Error(`Invalid historical exchange rate of 0 from USD to ${from} on ${dateStr}.`);
+            }
+            rate = rateUSDToTo / rateUSDToFrom;
+        }
 
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         const isHistorical = targetDate.getTime() < today.getTime();
         const ttl = isHistorical
-            ? 604800
+            ? 604800 // Cache historical rates for 7 days
             : Math.max(1, Math.floor(((new Date(today.getTime() + 86400000)).getTime() - Date.now()) / 1000));
 
-        const cacheAndReturn = async (record: { base: string; rate: any }) => {
-            const rate = calculateRate(record);
-            await safeSetex(cacheKey, ttl, rate);
-            return rate;
-        };
-
-        const pairFilter = {
-            OR: [
-                { base: from, target: to },
-                { base: to, target: from },
-            ],
-        };
-
-        let record = await prisma.currencyRateHistory.findFirst({
-            where: { rateDate: targetDate, ...pairFilter },
-        });
-        if (record) return cacheAndReturn(record);
-
-        record = await prisma.currencyRateHistory.findFirst({
-            where: { rateDate: { lte: targetDate }, ...pairFilter },
-            orderBy: { rateDate: 'desc' },
-        });
-        if (record) return cacheAndReturn(record);
-
-        record = await prisma.currencyRateHistory.findFirst({
-            where: { rateDate: { gte: targetDate }, ...pairFilter },
-            orderBy: { rateDate: 'asc' },
-        });
-        if (record) return cacheAndReturn(record);
-
-        const currentRate = await prisma.currencyRate.findFirst({ where: pairFilter });
-        if (currentRate) {
-            console.log(`Using current rate for ${from} to ${to} (no historical data for ${dateStr})`);
-            return cacheAndReturn(currentRate);
-        }
-
-        throw new Error(
-            `No exchange rate found for ${from} to ${to}. ` +
-            `Ensure currency rates have been initialized.`
-        );
+        await safeSetex(cacheKey, ttl, rate);
+        return rate;
     } catch (error) {
         console.error(`Error getting historical exchange rate from ${from} to ${to} for ${date}:`, error);
         throw error;

@@ -4,6 +4,78 @@ import { safeGet, safeMget, safeSetex } from "./redis";
 import { getHistoricalExchangeRate } from "../services/currency_rates.service";
 
 /**
+ * Get current exchange rate with USD-based derivation and caching
+ */
+export async function getCurrentExchangeRate(from: string, to: string): Promise<number> {
+  if (from === to) return 1.0;
+
+  const cacheKey = `rate:${from}:${to}`;
+  const cached = await safeGet(cacheKey);
+  if (cached) {
+    const num = parseFloat(cached);
+    if (!isNaN(num)) return num;
+  }
+
+  let rate: number;
+
+  if (from === 'USD') {
+    const record = await prisma.currencyRate.findUnique({
+      where: {
+        base_target: { base: 'USD', target: to }
+      }
+    });
+    if (!record) {
+      throw new Error(`Missing current exchange rate from USD to ${to}. Ensure currency rates are properly initialized.`);
+    }
+    rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+  } else if (to === 'USD') {
+    const record = await prisma.currencyRate.findUnique({
+      where: {
+        base_target: { base: 'USD', target: from }
+      }
+    });
+    if (!record) {
+      throw new Error(`Missing current exchange rate from USD to ${from}. Ensure currency rates are properly initialized.`);
+    }
+    const baseRate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+    if (baseRate === 0) {
+      throw new Error(`Invalid exchange rate of 0 from USD to ${from}.`);
+    }
+    rate = 1 / baseRate;
+  } else {
+    // Derived rate: from -> to = (USD -> to) / (USD -> from)
+    const records = await prisma.currencyRate.findMany({
+      where: {
+        base: 'USD',
+        target: { in: [from, to] }
+      }
+    });
+
+    const fromRecord = records.find(r => r.target === from);
+    const toRecord = records.find(r => r.target === to);
+
+    if (!fromRecord || !toRecord) {
+      throw new Error(
+        `Missing current exchange rates to derive ${from} to ${to}. ` +
+        `Required USD->${from} and USD->${to}. Ensure currency rates are properly initialized.`
+      );
+    }
+
+    const rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
+    const rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
+
+    if (rateUSDToFrom === 0) {
+      throw new Error(`Invalid exchange rate of 0 from USD to ${from}.`);
+    }
+
+    rate = rateUSDToTo / rateUSDToFrom;
+  }
+
+  await safeSetex(cacheKey, 86400, rate);
+  return rate;
+}
+
+/**
  * Convert currency using current exchange rates
  * Throws error if exchange rate is not available
  */
@@ -16,31 +88,8 @@ export async function convertCurrencyFromDB(
     if (from === to) return typeof value === 'number' ? value : value.toNumber();
 
     const numValue = typeof value === 'number' ? value : value.toNumber();
-
-    const cachedRateStr = await safeGet(`rate:${from}:${to}`);
-    if (cachedRateStr) {
-        const cachedRate = parseFloat(cachedRateStr);
-        if (!isNaN(cachedRate)) {
-            return numValue * cachedRate;
-        }
-    }
-
-    const rateRecord = await prisma.currencyRate.findUnique({
-      where: {
-        base_target: { base: from, target: to }
-      }
-    });
-
-    if (!rateRecord) {
-      throw new Error(
-        `Missing current exchange rate from ${from} to ${to}. ` +
-        `Ensure currency rates are properly initialized and updated.`
-      );
-    }
-
-    const numRate = typeof rateRecord.rate === 'number' ? rateRecord.rate : rateRecord.rate.toNumber();
-    await safeSetex(`rate:${from}:${to}`, 86400, numRate);
-    return numValue * numRate;
+    const rate = await getCurrentExchangeRate(from, to);
+    return numValue * rate;
   } catch (error) {
     if (error instanceof Error && error.message.includes('Missing current exchange rate')) {
       // Re-throw business logic errors as-is
@@ -139,7 +188,7 @@ export async function getTotalConvertedHistorical(
 
 /**
  * Batch convert currencies using current exchange rates
- * Optimized to fetch all required rates in a single query
+ * Optimized to fetch all required rates in a single query with USD-based derivation
  */
 export async function batchConvertCurrency(
   items: { amount: number | Decimal, currency: string }[],
@@ -149,55 +198,88 @@ export async function batchConvertCurrency(
     throw new Error('items must be an array');
   }
 
-  // Get unique currency pairs needed
-  const uniquePairs = new Set<string>();
-  for (const item of items) {
-    if (item.currency !== baseCurrency) {
-      uniquePairs.add(`${item.currency}_${baseCurrency}`);
-    }
-  }
+  // Get unique currencies that need conversion
+  const uniqueFromCurrencies = Array.from(new Set(
+    items.map(item => item.currency).filter(curr => curr !== baseCurrency)
+  ));
 
   const rateMap = new Map<string, number>();
 
-  if (uniquePairs.size > 0) {
-      const pairsArray = Array.from(uniquePairs);
+  if (uniqueFromCurrencies.length > 0) {
       // Try to get all rates from Redis at once
-      const redisKeys = pairsArray.map(pair => {
-          const [base, target] = pair.split('_');
-          return `rate:${base}:${target}`;
-      });
-
+      const redisKeys = uniqueFromCurrencies.map(from => `rate:${from}:${baseCurrency}`);
       const cachedRates = await safeMget(redisKeys);
-      const missingPairs = [];
+      const missingFromCurrencies: string[] = [];
 
-      for (let i = 0; i < pairsArray.length; i++) {
-          const pair = pairsArray[i];
+      for (let i = 0; i < uniqueFromCurrencies.length; i++) {
+          const from = uniqueFromCurrencies[i];
           const cachedRate = cachedRates[i];
           if (cachedRate) {
               const numRate = parseFloat(cachedRate);
               if (!isNaN(numRate)) {
-                  rateMap.set(pair, numRate);
+                  rateMap.set(from, numRate);
                   continue;
               }
           }
-          missingPairs.push(pair);
+          missingFromCurrencies.push(from);
       }
 
-      // Fetch any missing rates from DB
-      if (missingPairs.length > 0) {
-          const rateRecords = await prisma.currencyRate.findMany({
-            where: {
-              OR: missingPairs.map(pair => {
-                const [base, target] = pair.split('_');
-                return { base, target };
-              })
-            }
-          });
+      // Fetch any missing rates from DB using USD-based derivation
+      if (missingFromCurrencies.length > 0) {
+          const neededTargets = new Set<string>();
+          for (const from of missingFromCurrencies) {
+              if (from !== 'USD') neededTargets.add(from);
+              if (baseCurrency !== 'USD') neededTargets.add(baseCurrency);
+          }
 
-          for (const record of rateRecords) {
-            const key = `${record.base}_${record.target}`;
-            const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
-            rateMap.set(key, rate);
+          const usdRatesMap = new Map<string, number>();
+
+          if (neededTargets.size > 0) {
+              const rateRecords = await prisma.currencyRate.findMany({
+                where: {
+                  base: 'USD',
+                  target: { in: Array.from(neededTargets) }
+                }
+              });
+
+              for (const record of rateRecords) {
+                const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+                usdRatesMap.set(record.target, rate);
+              }
+          }
+
+          // Compute and cache the missing rates
+          for (const from of missingFromCurrencies) {
+              let rate: number;
+
+              if (from === 'USD') {
+                  const baseRate = usdRatesMap.get(baseCurrency);
+                  if (baseRate === undefined) {
+                      throw new Error(`Missing current exchange rate from USD to ${baseCurrency}. Ensure currency rates are properly initialized.`);
+                  }
+                  rate = baseRate;
+              } else if (baseCurrency === 'USD') {
+                  const baseRate = usdRatesMap.get(from);
+                  if (baseRate === undefined || baseRate === 0) {
+                      throw new Error(`Missing or invalid current exchange rate from USD to ${from}. Ensure currency rates are properly initialized.`);
+                  }
+                  rate = 1 / baseRate;
+              } else {
+                  const rateUSDToFrom = usdRatesMap.get(from);
+                  const rateUSDToTo = usdRatesMap.get(baseCurrency);
+
+                  if (rateUSDToFrom === undefined || rateUSDToTo === undefined || rateUSDToFrom === 0) {
+                      throw new Error(
+                          `Missing current exchange rates to derive ${from} to ${baseCurrency}. ` +
+                          `Required USD->${from} and USD->${baseCurrency}. Ensure currency rates are properly initialized.`
+                      );
+                  }
+                  rate = rateUSDToTo / rateUSDToFrom;
+              }
+
+              rateMap.set(from, rate);
+              // Cache in Redis for 1 day
+              await safeSetex(`rate:${from}:${baseCurrency}`, 86400, rate);
           }
       }
   }
@@ -210,8 +292,7 @@ export async function batchConvertCurrency(
     if (item.currency === baseCurrency) {
       results.push(numValue);
     } else {
-      const rateKey = `${item.currency}_${baseCurrency}`;
-      const rate = rateMap.get(rateKey);
+      const rate = rateMap.get(item.currency);
 
       if (rate === undefined) {
         throw new Error(
