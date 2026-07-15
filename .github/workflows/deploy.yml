@@ -50,6 +50,9 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
           VM_PROJECT_DIRECTORY: ${{ secrets.VM_PROJECT_DIRECTORY }}
         run: |
+          # Ensure local temporary file is cleaned up on runner exit
+          trap 'rm -f .env.contents' EXIT
+          
           # 1. Write environment secrets securely to a temporary file on the runner
           printf "%s" "$ENV_CONTENTS" > .env.contents
           
@@ -62,12 +65,13 @@ jobs:
             --command="
               set -e
               
-              # Extract files
-              tar -xf - -C $VM_PROJECT_DIRECTORY
               cd $VM_PROJECT_DIRECTORY
               
               # Ensure .env.contents is removed on exit
               trap 'rm -f .env.contents' EXIT
+              
+              # Extract files
+              tar -xf - -C $VM_PROJECT_DIRECTORY
               
               # Immediately restrict .env.contents to owner-only permissions before it is read
               chmod 600 .env.contents
@@ -144,6 +148,3 @@ jobs:
                 exit 1
               fi
             "
-          
-          # Clean up local temporary file on runner
-          rm -f .env.contents
