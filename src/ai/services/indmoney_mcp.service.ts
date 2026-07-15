@@ -237,34 +237,48 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
     let resolvedMarket = "US_STOCKS"; // Default fallback
     let resolved = false;
 
-    for (const filterType of filterTypes) {
-      try {
-        const lookupResponse = await client.callTool({
-          name: "lookup_ind_keys",
-          arguments: {
-            names: [symbol],
-            filter_type: filterType
-          },
-        });
+    // If the symbol is already a resolved ind_key, skip the lookup to avoid fuzzy search mapping bugs
+    const upperSymbol = symbol.toUpperCase();
+    if (upperSymbol.startsWith("INDS")) {
+      indKey = symbol;
+      resolvedMarket = "IN_STOCKS";
+      resolved = true;
+    } else if (/^\d+$/.test(symbol)) {
+      indKey = symbol;
+      resolvedMarket = "MF";
+      resolved = true;
+    }
 
-        if (lookupResponse && Array.isArray((lookupResponse as any).content)) {
-          const text = (lookupResponse as any).content[0]?.text;
-          if (text) {
-            const matches = JSON.parse(text);
-            if (matches && matches.length > 0) {
-              // Try to find exact case-insensitive match for the ind_key or symbol
-              const exactMatch = matches.find(
-                (m: any) => m.ind_key.toUpperCase() === symbol.toUpperCase()
-              );
-              indKey = exactMatch ? exactMatch.ind_key : matches[0].ind_key;
-              resolvedMarket = filterType;
-              resolved = true;
-              break;
+    if (!resolved) {
+      for (const filterType of filterTypes) {
+        try {
+          const lookupResponse = await client.callTool({
+            name: "lookup_ind_keys",
+            arguments: {
+              names: [symbol],
+              filter_type: filterType
+            },
+          });
+
+          if (lookupResponse && Array.isArray((lookupResponse as any).content)) {
+            const text = (lookupResponse as any).content[0]?.text;
+            if (text) {
+              const matches = JSON.parse(text);
+              if (matches && matches.length > 0) {
+                // Try to find exact case-insensitive match for the ind_key or symbol
+                const exactMatch = matches.find(
+                  (m: any) => m.ind_key.toUpperCase() === symbol.toUpperCase()
+                );
+                indKey = exactMatch ? exactMatch.ind_key : matches[0].ind_key;
+                resolvedMarket = filterType;
+                resolved = true;
+                break;
+              }
             }
           }
+        } catch (err) {
+          console.error(`Failed to lookup key in ${filterType}:`, err);
         }
-      } catch (err) {
-        console.error(`Failed to lookup key in ${filterType}:`, err);
       }
     }
 
