@@ -718,7 +718,7 @@ async function syncHoldings(userId: string) {
       assetType = h.assetType as AssetType;
     }
 
-    const quantity = isReal ? (h.total_units || 0) : h.quantity;
+    let quantity = isReal ? (h.total_units || 0) : h.quantity;
     let lastPrice = isReal ? (h.unit_price || 0) : h.lastPrice;
 
     // If it's real data from INDMoney, the raw amounts are already in INR.
@@ -726,11 +726,25 @@ async function syncHoldings(userId: string) {
     const holdingCurrency = h.holdingCurrency ?? "INR";
 
     let avgCost = 0;
-    if (isReal) {
-      const investedAmount = typeof h.invested_amount === "number" ? h.invested_amount : 0;
-      avgCost = quantity > 0 ? (investedAmount > 0 ? investedAmount / quantity : lastPrice) : 0;
-    } else {
-      avgCost = h.avgCost;
+
+    // Lump-sum assets (e.g. EPF) arrive with quantity=0, unit_price=0, invested_amount=0
+    // but have a valid market_value. Treat them as 1 unit worth the market_value.
+    if (isReal && quantity === 0) {
+      const marketValue = typeof h.market_value === "number" ? h.market_value : 0;
+      if (marketValue > 0) {
+        quantity = 1;
+        lastPrice = marketValue;
+        avgCost = marketValue;
+      }
+    }
+
+    if (avgCost === 0) {
+      if (isReal) {
+        const investedAmount = typeof h.invested_amount === "number" ? h.invested_amount : 0;
+        avgCost = quantity > 0 ? (investedAmount > 0 ? investedAmount / quantity : lastPrice) : 0;
+      } else {
+        avgCost = h.avgCost;
+      }
     }
 
     // If the real lastPrice is 0 or not provided (common for crypto/alternate assets),
@@ -764,6 +778,36 @@ async function syncHoldings(userId: string) {
     };
   });
 
+  // Aggregate entries that share the same ticker (e.g. multiple EPF accounts).
+  // For normal holdings: sum quantities, weighted-average avgCost & lastPrice.
+  // For lump-sum holdings (qty=1, avgCost===lastPrice): sum values, keep qty=1.
+  const aggregated = new Map<string, typeof upsertDataList[number]>();
+  for (const entry of upsertDataList) {
+    const existing = aggregated.get(entry.ticker);
+    if (!existing) {
+      aggregated.set(entry.ticker, { ...entry });
+      continue;
+    }
+
+    const isLumpSum = existing.quantity === 1 && existing.finalAvgCost === existing.finalLastPrice
+      && entry.quantity === 1 && entry.finalAvgCost === entry.finalLastPrice;
+
+    if (isLumpSum) {
+      existing.finalAvgCost += entry.finalAvgCost;
+      existing.finalLastPrice += entry.finalLastPrice;
+      existing.convertedValue += entry.convertedValue;
+    } else {
+      const totalQty = existing.quantity + entry.quantity;
+      if (totalQty > 0) {
+        existing.finalAvgCost = (existing.finalAvgCost * existing.quantity + entry.finalAvgCost * entry.quantity) / totalQty;
+        existing.finalLastPrice = (existing.finalLastPrice * existing.quantity + entry.finalLastPrice * entry.quantity) / totalQty;
+      }
+      existing.quantity = totalQty;
+      existing.convertedValue += entry.convertedValue;
+    }
+  }
+  const upsertDataListFinal = Array.from(aggregated.values());
+
   // Fetch existing holdings for this user on the "INDMoney" platform to identify deleted (sold) ones
   const existingHoldings = await prisma.holding.findMany({
     where: {
@@ -772,7 +816,7 @@ async function syncHoldings(userId: string) {
     },
   });
 
-  const syncedTickers = new Set(upsertDataList.map((d) => d.ticker));
+  const syncedTickers = new Set(upsertDataListFinal.map((d) => d.ticker));
   const holdingsToDelete = existingHoldings.filter((h) => !syncedTickers.has(h.ticker));
 
   // Run database operations inside a Prisma transaction
@@ -788,7 +832,7 @@ async function syncHoldings(userId: string) {
     }
 
     // 2. Upsert currently active holdings
-    for (const data of upsertDataList) {
+    for (const data of upsertDataListFinal) {
       const holding = await tx.holding.upsert({
         where: {
           id_userId: {
@@ -885,7 +929,7 @@ async function syncHoldings(userId: string) {
         },
       });
     }
-  });
+  }, { timeout: 30000 });
 
   return {
     syncedCount: syncedHoldings.length,
