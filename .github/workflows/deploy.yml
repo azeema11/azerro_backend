@@ -30,6 +30,9 @@ jobs:
           secrets: |-
             env_contents:projects/${{ secrets.GCP_PROJECT_ID }}/secrets/azerro-backend-env/versions/latest
 
+      - name: Install NumPy for IAP tunnel performance
+        run: pip install numpy
+
       - name: Configure Docker
         run: |
           gcloud auth configure-docker asia-south1-docker.pkg.dev
