@@ -6,6 +6,18 @@ import { AssetType } from "@prisma/client";
 import { convertCurrencyFromDB } from "../../utils/currency";
 import { DomainError } from "../../utils/prisma_errors";
 import crypto from "crypto";
+import { safeGet, safeSetex } from "../../utils/redis";
+
+/**
+ * Helper to cache INDMoney access token in Redis with a 5-minute buffer.
+ */
+export async function cacheAccessToken(userId: string, accessToken: string, expiresInSeconds: number): Promise<void> {
+  const bufferSeconds = 5 * 60;
+  if (expiresInSeconds > bufferSeconds) {
+    const ttlSeconds = expiresInSeconds - bufferSeconds;
+    await safeSetex(`indmoney:token:${userId}`, ttlSeconds, accessToken);
+  }
+}
 
 const mcpUrl = process.env.INDMONEY_MCP_URL || "https://mcp.indmoney.com/mcp";
 
@@ -331,6 +343,11 @@ export async function handleIndmoneyCallback(code: string, state: string) {
       },
     });
 
+    // Cache the new token in Redis using helper
+    if (expires_in) {
+      await cacheAccessToken(userId, access_token, expires_in);
+    }
+
     // Delete the temporary PKCE record
     await prisma.userMemory.delete({
       where: { id: tempMemory.id },
@@ -409,6 +426,11 @@ async function performRefresh(userId: string, memoryId: string, refreshToken: st
       },
     });
 
+    // Cache the refreshed token in Redis using helper
+    if (expires_in) {
+      await cacheAccessToken(userId, access_token, expires_in);
+    }
+
     return access_token;
   } catch (error: any) {
     console.error("Failed to refresh INDMoney token:", error.message || error);
@@ -454,6 +476,13 @@ async function refreshAccessToken(userId: string, memoryId: string, refreshToken
  * Retrieves a valid access token for INDMoney, automatically refreshing it if expired.
  */
 export async function getAccessToken(userId: string): Promise<string> {
+  // 1. Try to fetch from Redis Cache first
+  const cachedToken = await safeGet(`indmoney:token:${userId}`);
+  if (cachedToken) {
+    return cachedToken;
+  }
+
+  // 2. Cache miss: Fetch from Database
   const memory = await prisma.userMemory.findUnique({
     where: {
       userId_category_key: {
@@ -482,11 +511,18 @@ export async function getAccessToken(userId: string): Promise<string> {
   const expiresAt = val.expiresAt ? new Date(val.expiresAt) : null;
   const bufferTime = 5 * 60 * 1000; // 5 minutes buffer
 
+  let tokenToUse = val.accessToken;
+
   if (expiresAt && expiresAt.getTime() - Date.now() < bufferTime && val.refreshToken) {
-    return refreshAccessToken(userId, memory.id, val.refreshToken, val);
+    tokenToUse = await refreshAccessToken(userId, memory.id, val.refreshToken, val);
+  } else {
+    // If token is still valid, cache it in Redis for the remaining duration (using helper)
+    const remainingTimeMs = expiresAt ? expiresAt.getTime() - Date.now() : 0;
+    const expiresInSeconds = Math.floor(remainingTimeMs / 1000);
+    await cacheAccessToken(userId, val.accessToken, expiresInSeconds);
   }
 
-  return val.accessToken;
+  return tokenToUse;
 }
 
 /**
@@ -721,8 +757,30 @@ async function syncHoldings(userId: string) {
     };
   });
 
+  // Fetch existing holdings for this user on the "INDMoney" platform to identify deleted (sold) ones
+  const existingHoldings = await prisma.holding.findMany({
+    where: {
+      userId,
+      platform: "INDMoney",
+    },
+  });
+
+  const syncedTickers = new Set(upsertDataList.map((d) => d.ticker));
+  const holdingsToDelete = existingHoldings.filter((h) => !syncedTickers.has(h.ticker));
+
   // Run database operations inside a Prisma transaction
   await prisma.$transaction(async (tx) => {
+    // 1. Delete holdings that are no longer present in the sync
+    if (holdingsToDelete.length > 0) {
+      await tx.holding.deleteMany({
+        where: {
+          userId,
+          id: { in: holdingsToDelete.map((h) => h.id) },
+        },
+      });
+    }
+
+    // 2. Upsert currently active holdings
     for (const data of upsertDataList) {
       const holding = await tx.holding.upsert({
         where: {
@@ -755,6 +813,46 @@ async function syncHoldings(userId: string) {
         },
       });
       syncedHoldings.push(holding);
+    }
+
+    // 3. Record snapshots of active holdings in HoldingHistory
+    if (syncedHoldings.length > 0) {
+      const activeSnapshots = syncedHoldings.map((h) => ({
+        userId,
+        holdingId: h.id,
+        platform: h.platform,
+        ticker: h.ticker,
+        assetType: h.assetType,
+        name: h.name,
+        quantity: h.quantity,
+        avgCost: h.avgCost,
+        holdingCurrency: h.holdingCurrency,
+        lastPrice: h.lastPrice,
+        convertedValue: h.convertedValue,
+      }));
+      await tx.holdingHistory.createMany({
+        data: activeSnapshots,
+      });
+    }
+
+    // 4. Record snapshots with quantity 0 for deleted holdings in HoldingHistory
+    if (holdingsToDelete.length > 0) {
+      const deletedSnapshots = holdingsToDelete.map((h) => ({
+        userId,
+        holdingId: h.id,
+        platform: h.platform,
+        ticker: h.ticker,
+        assetType: h.assetType,
+        name: h.name,
+        quantity: 0,
+        avgCost: h.avgCost,
+        holdingCurrency: h.holdingCurrency,
+        lastPrice: h.lastPrice,
+        convertedValue: 0,
+      }));
+      await tx.holdingHistory.createMany({
+        data: deletedSnapshots,
+      });
     }
 
     // Update lastSyncedAt in UserMemory inside the transaction

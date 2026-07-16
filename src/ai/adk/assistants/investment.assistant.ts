@@ -1,6 +1,6 @@
 import { LlmAgent } from "@google/adk";
 import { getModelConfig } from "../model_config";
-import { getHoldingsTool, getBankAccountsTool } from "../tools/data_tools";
+import { getHoldingsTool, getHoldingsHistoryTool, getBankAccountsTool } from "../tools/data_tools";
 import { memoryTools } from "../tools/memory_tools";
 import { marketTools } from "../tools/market_tools";
 
@@ -19,7 +19,8 @@ YOUR TOOLS:
   * search_market_instrument: Search for any stock or mutual fund by name/symbol to find its ticker.
   * get_market_instrument_details: Fetch live price, valuation metrics (P/E, PEG), analyst consensus, target prices, and recent news for any stock/fund.
 - Portfolio Tools:
-  * get_holdings: Retrieve the user's existing holdings (stocks, crypto, metals) with quantities, average costs, and current values.
+  * get_holdings: Retrieve the user's existing active holdings (stocks, crypto, metals) with quantities, average costs, and current values. Use this for current active holdings.
+  * get_holdings_history: Retrieve the complete historical snapshots of the user's investment holdings over time, including sold (zero-balance) assets. You must explicitly use this for any questions about past ownership, sold or zero-balance assets, and historical holding snapshots.
   * get_bank_accounts: Retrieve bank account balances to understand available cash for investing.
 
 GUIDELINES FOR INVESTMENT ADVICE (CRITICAL):
@@ -47,5 +48,5 @@ export const investmentAssistant = new LlmAgent({
   model,
   description: "Jarvis personalized investment advice AI assistant.",
   instruction: SYSTEM_INSTRUCTION,
-  tools: [getHoldingsTool, getBankAccountsTool, ...memoryTools, ...marketTools],
+  tools: [getHoldingsTool, getHoldingsHistoryTool, getBankAccountsTool, ...memoryTools, ...marketTools],
 });

@@ -18,20 +18,6 @@ export const fetchCurrentPrice = async (ticker: string, assetType: string): Prom
         let price: number | null = null;
 
         switch (assetType) {
-            case 'STOCK': {
-                const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${process.env.FINNHUB_API_KEY}`);
-                if (!response.ok) return null;
-                const data = await response.json();
-                price = data.c || null;
-                break;
-            }
-            case 'CRYPTO': {
-                const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ticker.toLowerCase()}&vs_currencies=usd`);
-                if (!response.ok) return null;
-                const data = await response.json();
-                price = data[ticker.toLowerCase()]?.usd || null;
-                break;
-            }
             case 'METAL': {
                 const spotData = await getMetalSpotPrices();
                 if (!spotData) return null;
@@ -53,12 +39,30 @@ export const fetchCurrentPrice = async (ticker: string, assetType: string): Prom
     }
 };
 
-export const getHoldings = async (userId: string) => {
+export const getHoldings = async (userId: string, onlyWithBalance = false) => {
     return withPrismaErrorHandling(async () => {
+        const where: any = { userId };
+        if (onlyWithBalance) {
+            where.quantity = { gt: 0 };
+        }
         return await prisma.holding.findMany({
-            where: { userId },
+            where,
         });
     }, 'Holding');
+};
+
+export const getHoldingHistory = async (userId: string, limit?: number, onlyWithBalance = false) => {
+    return withPrismaErrorHandling(async () => {
+        const where: any = { userId };
+        if (onlyWithBalance) {
+            where.quantity = { gt: 0 };
+        }
+        return await prisma.holdingHistory.findMany({
+            where,
+            orderBy: { recordedAt: 'desc' },
+            ...(limit ? { take: limit } : {}),
+        });
+    }, 'HoldingHistory');
 };
 
 export const createHolding = async (
