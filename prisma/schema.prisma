@@ -58,9 +58,9 @@ model Holding {
   userId String
 
   platform  String    @db.VarChar(50) // e.g., Zerodha, Binance, Robinhood
-  ticker    String    @db.VarChar(20) // e.g., INFY.NS, AAPL, BTC
+  ticker    String    @db.VarChar(50) // e.g., INFY.NS, AAPL, BTC, INF209KA1LN1
   assetType AssetType // STOCK, CRYPTO, METAL
-  name      String    @db.VarChar(100)
+  name      String    @db.VarChar(255)
 
   quantity        Decimal  @db.Decimal(20, 8) // High precision for crypto
   avgCost         Decimal  @db.Decimal(15, 4) // In holdingCurrency
@@ -178,6 +178,7 @@ enum AssetType {
   STOCK
   CRYPTO
   METAL
+  LIQUID
 }
 
 enum AccountType {
@@ -281,9 +282,9 @@ model HoldingHistory {
   userId          String
   holdingId       String
   platform        String    @db.VarChar(50)
-  ticker          String    @db.VarChar(20)
+  ticker          String    @db.VarChar(50)
   assetType       AssetType
-  name            String    @db.VarChar(100)
+  name            String    @db.VarChar(255)
   quantity        Decimal   @db.Decimal(20, 8)
   avgCost         Decimal   @db.Decimal(15, 4)
   holdingCurrency String    @db.VarChar(3)

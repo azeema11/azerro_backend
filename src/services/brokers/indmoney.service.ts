@@ -189,7 +189,7 @@ async function connect(userId: string, data?: any) {
     for (const record of oldPkceRecords) {
       const val = record.value as any;
       if (val && val.expiresAt && new Date(val.expiresAt) < new Date()) {
-        await prisma.userMemory.delete({ where: { id: record.id } }).catch(() => {});
+        await prisma.userMemory.delete({ where: { id: record.id } }).catch(() => { });
       }
     }
   } catch (err) {
@@ -268,7 +268,7 @@ export async function handleIndmoneyCallback(code: string, state: string) {
     // Delete expired PKCE record
     await prisma.userMemory.delete({
       where: { id: tempMemory.id },
-    }).catch(() => {});
+    }).catch(() => { });
 
     throw new DomainError(
       "Connection session expired. Please try connecting again.",
@@ -358,7 +358,7 @@ export async function handleIndmoneyCallback(code: string, state: string) {
     // Delete the temporary PKCE record on failure to prevent leaks
     await prisma.userMemory.delete({
       where: { id: tempMemory.id },
-    }).catch(() => {});
+    }).catch(() => { });
 
     console.error("Failed to exchange INDMoney auth code:", error.response?.data || error.message || error);
     throw new DomainError(
@@ -603,8 +603,12 @@ async function syncHoldings(userId: string) {
 
       await client.connect(transport);
 
-      // Fetch holdings for supported asset types from INDMoney MCP
-      const assetTypes = ["IND_STOCK", "MF", "US_STOCK", "CRYPTO"];
+      const { tools } = await client.listTools();
+
+      const assetTypes: string[] = tools.filter((tool) => tool.name.startsWith("networth_holdings"))
+        .map((tool) => (tool.inputSchema?.properties as Record<string, any>)?.asset_type)
+        .map((assetType: any) => assetType?.enum).flat();
+
       for (const assetType of assetTypes) {
         try {
           const response = await client.callTool({
@@ -706,6 +710,9 @@ async function syncHoldings(userId: string) {
     if (isReal) {
       if (h._assetTypeContext === "CRYPTO") {
         assetType = "CRYPTO";
+      }
+      if (h._assetTypeContext === "EPF") {
+        assetType = "LIQUID";
       }
     } else {
       assetType = h.assetType as AssetType;
