@@ -803,6 +803,7 @@ async function syncHoldings(userId: string) {
           lastPrice: data.finalLastPrice,
           convertedValue: data.convertedValue,
           name: data.name,
+          assetType: data.assetType,
           platform: "INDMoney",
         },
         create: {
