@@ -99,7 +99,7 @@ jobs:
 
               docker-compose pull
               docker-compose up -d
-              docker image prune -f
+              docker system prune -af --filter 'until=24h'
               
               # Bounded wait for all services to be running and healthy
               echo 'Checking service readiness...'
