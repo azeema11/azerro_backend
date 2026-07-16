@@ -726,6 +726,7 @@ async function syncHoldings(userId: string) {
     const holdingCurrency = h.holdingCurrency ?? "INR";
 
     let avgCost = 0;
+    let isLumpSum = false;
 
     // Lump-sum assets (e.g. EPF) arrive with quantity=0, unit_price=0, invested_amount=0
     // but have a valid market_value. Treat them as 1 unit worth the market_value.
@@ -735,6 +736,7 @@ async function syncHoldings(userId: string) {
         quantity = 1;
         lastPrice = marketValue;
         avgCost = marketValue;
+        isLumpSum = true;
       }
     }
 
@@ -775,12 +777,13 @@ async function syncHoldings(userId: string) {
       holdingCurrency,
       finalLastPrice,
       convertedValue,
+      isLumpSum,
     };
   });
 
   // Aggregate entries that share the same ticker (e.g. multiple EPF accounts).
-  // For normal holdings: sum quantities, weighted-average avgCost & lastPrice.
-  // For lump-sum holdings (qty=1, avgCost===lastPrice): sum values, keep qty=1.
+  // Lump-sum entries (explicitly flagged): sum values, keep qty=1.
+  // Normal entries: sum quantities, weighted-average avgCost & lastPrice.
   const aggregated = new Map<string, typeof upsertDataList[number]>();
   for (const entry of upsertDataList) {
     const existing = aggregated.get(entry.ticker);
@@ -789,10 +792,7 @@ async function syncHoldings(userId: string) {
       continue;
     }
 
-    const isLumpSum = existing.quantity === 1 && existing.finalAvgCost === existing.finalLastPrice
-      && entry.quantity === 1 && entry.finalAvgCost === entry.finalLastPrice;
-
-    if (isLumpSum) {
+    if (existing.isLumpSum && entry.isLumpSum) {
       existing.finalAvgCost += entry.finalAvgCost;
       existing.finalLastPrice += entry.finalLastPrice;
       existing.convertedValue += entry.convertedValue;
@@ -804,6 +804,7 @@ async function syncHoldings(userId: string) {
       }
       existing.quantity = totalQty;
       existing.convertedValue += entry.convertedValue;
+      existing.isLumpSum = false;
     }
   }
   const upsertDataListFinal = Array.from(aggregated.values());

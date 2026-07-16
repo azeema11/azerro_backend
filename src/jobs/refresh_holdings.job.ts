@@ -4,7 +4,7 @@ import prisma from '../utils/db';
 import { indmoneyService } from '../services/brokers/indmoney.service';
 
 export const scheduleHoldingRefresh = () => {
-  cron.schedule(process.env.HOLDING_REFRESH_CRON || '0 4,18 * * *', async () => {
+  cron.schedule(process.env.HOLDING_REFRESH_CRON || '30 12,22 * * *', async () => {
     console.log('[Holdings Refresh] Started job...');
     try {
       // Define the general metal price update task
