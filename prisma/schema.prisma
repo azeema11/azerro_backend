@@ -49,6 +49,7 @@ model User {
   goals         Goal[]
   chatMessages  ChatMessage[]
   memories      UserMemory[]
+  holdingHistory HoldingHistory[]
 }
 
 model Holding {
@@ -272,5 +273,28 @@ model UserMemory {
   @@unique([userId, category, key])
   @@index([userId])
   @@index([userId, category])
+}
+
+model HoldingHistory {
+  id              String    @id @default(uuid())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  holdingId       String
+  platform        String    @db.VarChar(50)
+  ticker          String    @db.VarChar(20)
+  assetType       AssetType
+  name            String    @db.VarChar(100)
+  quantity        Decimal   @db.Decimal(20, 8)
+  avgCost         Decimal   @db.Decimal(15, 4)
+  holdingCurrency String    @db.VarChar(3)
+  lastPrice       Decimal   @db.Decimal(15, 4)
+  convertedValue  Decimal   @db.Decimal(15, 2)
+  recordedAt      DateTime  @default(now())
+
+  @@index([userId])
+  @@index([userId, recordedAt])
+  @@index([holdingId])
+  @@index([ticker])
+  @@index([assetType])
 }
 

@@ -6,7 +6,8 @@ import {
   getHoldings as getHoldingsService,
   createHolding as createHoldingService,
   updateHolding as updateHoldingService,
-  deleteHolding as deleteHoldingService
+  deleteHolding as deleteHoldingService,
+  getHoldingHistory as getHoldingHistoryService
 } from '../services/holding.service';
 
 export const getHoldings = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -14,8 +15,19 @@ export const getHoldings = asyncHandler(async (req: AuthRequest, res: Response) 
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const holdings = await getHoldingsService(req.userId);
+  const onlyWithBalance = req.query.onlyWithBalance === 'true';
+  const holdings = await getHoldingsService(req.userId, onlyWithBalance);
   res.status(200).json(holdings);
+});
+
+export const getHoldingHistory = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+  const history = await getHoldingHistoryService(req.userId, limit);
+  res.status(200).json(history);
 });
 
 export const createHolding = asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -7,7 +7,7 @@ import { handleGetBudgets } from "../../controllers/budget.controller";
 import { handleGetPlannedEvents } from "../../controllers/planned_event.controller";
 import { handleGetUserProfile } from "../../controllers/user.controller";
 import { handleGetReport } from "../../controllers/report.controller";
-import { handleGetHoldings } from "../../controllers/holding.controller";
+import { handleGetHoldings, handleGetHoldingHistory } from "../../controllers/holding.controller";
 import { handleGetBankAccounts } from "../../controllers/bank_account.controller";
 
 const CATEGORIES = Object.values(Category) as [string, ...string[]];
@@ -122,10 +122,26 @@ export const getHoldingsTool = new FunctionTool({
         `Valid asset types: ${ASSET_TYPES.join(", ")}.`,
     parameters: z.object({
         assetType: z.enum(ASSET_TYPES).optional().describe("Filter by asset type (STOCK, CRYPTO, METAL)"),
+        onlyWithBalance: z.boolean().optional().describe("If true, only returns holdings with a positive balance (quantity > 0)"),
     }),
     execute: async (input, ctx) => {
         const userId = getUserId(ctx);
-        return await handleGetHoldings(userId, input.assetType);
+        return await handleGetHoldings(userId, input.assetType, input.onlyWithBalance);
+    },
+});
+
+export const getHoldingsHistoryTool = new FunctionTool({
+    name: "get_holdings_history",
+    description:
+        "Fetches the historical snapshots of the user's investment holdings over time, including sold (zero-balance) assets. Returns a list of historical holding snapshots with recorded dates.",
+    parameters: z.object({
+        sinceDays: z.number().optional().describe("Only return history snapshot records recorded in the last N days"),
+        ticker: z.string().optional().describe("Filter history snapshots by ticker (case-insensitive)"),
+        limit: z.number().optional().describe("Maximum number of history snapshot records to return (default 100)"),
+    }),
+    execute: async (input, ctx) => {
+        const userId = getUserId(ctx);
+        return await handleGetHoldingHistory(userId, input.limit, input.sinceDays, input.ticker);
     },
 });
 
@@ -151,5 +167,6 @@ export const dataTools = [
     getUserProfileTool,
     getReportTool,
     getHoldingsTool,
+    getHoldingsHistoryTool,
     getBankAccountsTool,
 ];
