@@ -1,6 +1,6 @@
 import { FunctionTool, Context } from "@google/adk";
-import { z } from "zod";
 import { searchInstrument, getInstrumentDetails } from "../../services/indmoney_mcp.service";
+import { searchMarketInstrumentSchema, getMarketInstrumentDetailsSchema } from "../../validations/market_tool.schema";
 
 function getUserId(ctx?: Context): string {
   const userId = ctx?.state.get<string>("userId");
@@ -13,9 +13,7 @@ export const searchMarketInstrumentTool = new FunctionTool({
   description:
     "Searches for a stock, mutual fund, or index by name or symbol to find its ticker symbol. " +
     "Use this before fetching details or analyzing an instrument the user mentions but does not own.",
-  parameters: z.object({
-    query: z.string().describe("The search query (e.g., 'Microsoft', 'Reliance', 'TCS')"),
-  }),
+  parameters: searchMarketInstrumentSchema,
   execute: async (input, ctx) => {
     const userId = getUserId(ctx);
     try {
@@ -32,9 +30,7 @@ export const getMarketInstrumentDetailsTool = new FunctionTool({
   description:
     "Fetches live price, valuation metrics (P/E, PEG), analyst consensus, target prices, and recent news for a specific stock or mutual fund. " +
     "Use this to evaluate whether a stock is a good addition to the user's portfolio based on their preferences.",
-  parameters: z.object({
-    symbol: z.string().describe("The ticker symbol of the instrument (e.g., 'MSFT', 'RELIANCE', 'TCS')"),
-  }),
+  parameters: getMarketInstrumentDetailsSchema,
   execute: async (input, ctx) => {
     const userId = getUserId(ctx);
     try {

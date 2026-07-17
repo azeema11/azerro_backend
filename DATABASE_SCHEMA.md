@@ -1,25 +1,13 @@
-# Azerro Backend - Database Schema Documentation
+# Azerro Backend — Database Schema
 
-## Overview
-This document describes the database schema for the Azerro personal finance management platform. The system is built using **PostgreSQL** as the primary database with **Prisma** as the ORM.
+PostgreSQL database managed with Prisma ORM (14 tables). All monetary values use `DECIMAL` types for precision; string fields use `VarChar` with length constraints for validation or `Text` for unbounded content.
 
-### 🎯 Schema Optimization (v4.0) ✨ **COMPLETE & PRODUCTION-READY**
-The database schema has been comprehensively optimized for performance, storage efficiency, and data precision:
-- **Decimal Precision**: All monetary values use `DECIMAL` instead of `FLOAT` for accurate financial calculations
-- **Efficient String Types**: `VarChar` with appropriate length limits replace generic `String` types
-- **Data Integrity**: Database-level constraints ensure data quality and business logic compliance
-- **Exchange Rate Precision**: High-precision `DECIMAL(18,8)` for exchange rates prevents rounding errors
-- **Index Optimization**: Eliminated redundant indexes, consolidated for maximum efficiency
-- **Automated Maintenance**: Monthly VACUUM FULL, REINDEX, and ANALYZE scheduled
-- **Space Efficiency**: 14.4% size reduction achieved (8.6MB → 7.36MB)
-- **Atomic Operations**: Replaced Promise.all with prisma.$transaction for data consistency
-
-## Entity Relationship Diagram
-The database consists of 13 main entities with the following relationships:
+## Entity Relationships
 
 ```
 User (1) ──── (Many) UserAssistant ──── (Many) Assistant
 User (1) ──── (Many) Holding
+User (1) ──── (Many) HoldingHistory
 User (1) ──── (Many) Transaction
 User (1) ──── (Many) BankAccount ──── (Many) Transaction
 User (1) ──── (Many) PlannedEvent
@@ -31,348 +19,290 @@ CurrencyRate (standalone)
 CurrencyRateHistory (standalone)
 ```
 
-## Database Tables
+## Tables
 
-### 1. User
-**Purpose**: Core user account information and preferences
+### User
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique user identifier |
-| name | VarChar(100) | NOT NULL | User's full name |
-| email | VarChar(255) | UNIQUE, NOT NULL, EMAIL FORMAT | User's email address |
-| passwordHash | VarChar(255) | NOT NULL | Hashed password for authentication |
-| createdAt | DateTime | DEFAULT: now() | Account creation timestamp |
-| monthlyIncome | Decimal(15,2) | NULLABLE, >= 0 | User's monthly income |
-| baseCurrency | VarChar(3) | DEFAULT: "INR", CURRENCY FORMAT | User's preferred reporting currency |
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| name | VarChar(100) | NOT NULL |
+| email | VarChar(255) | UNIQUE, NOT NULL, email format |
+| passwordHash | VarChar(255) | NOT NULL |
+| createdAt | DateTime | DEFAULT now() |
+| monthlyIncome | Decimal(15,2) | NULLABLE, >= 0 |
+| baseCurrency | VarChar(3) | DEFAULT "INR", currency format |
 
-### 2. Assistant
-**Purpose**: Available assistant modules in the platform
+### Holding
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique assistant identifier |
-| name | VarChar(50) | UNIQUE, NOT NULL | Assistant module name (e.g., "finance") |
-| displayName | VarChar(100) | NOT NULL | Human-readable name (e.g., "Personal Finance") |
-| description | VarChar(500) | NULLABLE | Assistant description |
-| createdAt | DateTime | DEFAULT: now() | Creation timestamp |
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| platform | VarChar(50) | NOT NULL |
+| ticker | VarChar(50) | NOT NULL |
+| assetType | AssetType | NOT NULL |
+| name | VarChar(255) | NOT NULL |
+| quantity | Decimal(20,8) | NOT NULL |
+| avgCost | Decimal(15,4) | NOT NULL |
+| holdingCurrency | VarChar(3) | NOT NULL |
+| lastPrice | Decimal(15,4) | DEFAULT 0 |
+| lastChecked | DateTime | AUTO UPDATE |
+| convertedValue | Decimal(15,2) | DEFAULT 0 |
 
-### 3. UserAssistant
-**Purpose**: Junction table for user-assistant relationships
+**Unique**: (id, userId)
+**Indexes**: (userId), (userId, assetType), (ticker), (platform)
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique relationship identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| assistantId | UUID | FOREIGN KEY | Reference to Assistant |
-| activatedAt | DateTime | DEFAULT: now() | Activation timestamp |
-| settings | JSON | NULLABLE | User-specific assistant settings |
+### HoldingHistory
 
-**Unique Constraint**: (userId, assistantId)
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User (CASCADE) |
+| holdingId | String | NOT NULL |
+| platform | VarChar(50) | NOT NULL |
+| ticker | VarChar(50) | NOT NULL |
+| assetType | AssetType | NOT NULL |
+| name | VarChar(255) | NOT NULL |
+| quantity | Decimal(20,8) | NOT NULL |
+| avgCost | Decimal(15,4) | NOT NULL |
+| holdingCurrency | VarChar(3) | NOT NULL |
+| lastPrice | Decimal(15,4) | NOT NULL |
+| convertedValue | Decimal(15,2) | NOT NULL |
+| recordedAt | DateTime | DEFAULT now() |
 
-### 4. Holding
-**Purpose**: User's investment holdings across different platforms
+**Indexes**: (userId), (userId, recordedAt), (holdingId), (ticker), (assetType)
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique holding identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| platform | VarChar(50) | NOT NULL | Trading platform (e.g., "Zerodha", "Binance") |
-| ticker | VarChar(20) | NOT NULL | Asset ticker symbol (e.g., "INFY.NS", "BTC") |
-| assetType | AssetType | NOT NULL | Type of asset (STOCK, CRYPTO, METAL) |
-| name | VarChar(100) | NOT NULL | Human-readable asset name |
-| quantity | Decimal(20,8) | NOT NULL, > 0 | Number of units held (high precision for crypto) |
-| avgCost | Decimal(15,4) | NOT NULL, > 0 | Average cost per unit in holding currency |
-| holdingCurrency | VarChar(3) | NOT NULL, CURRENCY FORMAT | Currency of the holding (e.g., "INR", "USD") |
-| lastPrice | Decimal(15,4) | DEFAULT: 0, >= 0 | Latest price per unit |
-| lastChecked | DateTime | AUTO UPDATE | Last price update timestamp |
-| convertedValue | Decimal(15,2) | DEFAULT: 0, >= 0 | Total value in user's base currency |
+### Transaction
 
-### 5. Transaction
-**Purpose**: Financial transactions made by users
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| amount | Decimal(15,2) | NOT NULL |
+| currency | VarChar(3) | NOT NULL |
+| category | Category | NOT NULL |
+| type | TransactionType | NOT NULL, DEFAULT EXPENSE |
+| description | VarChar(500) | NULLABLE |
+| date | DateTime | NOT NULL |
+| bankAccountId | UUID | FK → BankAccount, NULLABLE |
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique transaction identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| amount | Decimal(15,2) | NOT NULL, > 0 | Transaction amount |
-| currency | VarChar(3) | NOT NULL, CURRENCY FORMAT | Transaction currency |
-| category | Category | NOT NULL | Transaction category (enum) |
-| type | TransactionType | NOT NULL, DEFAULT: EXPENSE | Transaction type (INCOME/EXPENSE) |
-| description | VarChar(500) | NULLABLE | Transaction description |
-| date | DateTime | NOT NULL | Transaction date |
-| bankAccountId | UUID | FOREIGN KEY, NULLABLE | Associated bank account |
+**Unique**: (id, userId)
+**Indexes**: (userId, type), (userId, date), (userId, category), (date)
 
-### 6. BankAccount
-**Purpose**: User's bank accounts and financial accounts
+### BankAccount
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique account identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| name | VarChar(100) | NOT NULL | Account name/nickname |
-| type | AccountType | NOT NULL | Account type (SAVINGS, CURRENT, CREDIT_CARD, CASH) |
-| balance | Decimal(15,2) | NOT NULL, >= 0 (except CREDIT_CARD) | Current account balance |
-| currency | VarChar(3) | NOT NULL, CURRENCY FORMAT | Account currency |
-| createdAt | DateTime | DEFAULT: now() | Account creation timestamp |
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| name | VarChar(100) | NOT NULL |
+| type | AccountType | NOT NULL |
+| balance | Decimal(15,2) | NOT NULL |
+| currency | VarChar(3) | NOT NULL |
+| createdAt | DateTime | DEFAULT now() |
 
-### 7. PlannedEvent
-**Purpose**: Future financial goals and planned expenses
+**Unique**: (id, userId)
+**Indexes**: (userId), (userId, type)
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique event identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| name | String | NOT NULL | Event name (e.g., "Goa Trip") |
-| targetDate | DateTime | NOT NULL | Target date for the event |
-| estimatedCost | Float | NOT NULL | Estimated total cost |
-| savedSoFar | Float | DEFAULT: 0 | Amount saved towards the event |
-| currency | String | NOT NULL | Event currency (defaults to user's base currency) ✨ **ENHANCED**
-| category | Category | DEFAULT: OTHER | Event category for expense tracking ✨ **ENHANCED**
-| recurrence | Periodicity | DEFAULT: ONE_TIME | Recurring event frequency ✨ **ENHANCED**
-| createdAt | DateTime | DEFAULT: now() | Creation timestamp |
+### Goal
 
-### 8. Budget
-**Purpose**: User-defined spending budgets by category
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| name | VarChar(200) | NOT NULL |
+| description | VarChar(1000) | NULLABLE |
+| targetAmount | Decimal(15,2) | NOT NULL |
+| savedAmount | Decimal(15,2) | DEFAULT 0 |
+| currency | VarChar(3) | NOT NULL |
+| targetDate | DateTime | NOT NULL |
+| createdAt | DateTime | DEFAULT now() |
+| updatedAt | DateTime | AUTO UPDATE |
+| completed | Boolean | DEFAULT false |
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique budget identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| category | Category | NOT NULL | Budget category (enum) |
-| amount | Float | NOT NULL | Budget amount for the period |
-| period | Periodicity | NOT NULL | Budget period (WEEKLY, MONTHLY, YEARLY) |
-| createdAt | DateTime | DEFAULT: now() | Creation timestamp |
+**Unique**: (id, userId)
+**Indexes**: (userId), (userId, completed), (userId, targetDate), (targetDate)
 
-### 9. Goal
-**Purpose**: Financial goals and savings targets
+### Budget
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique goal identifier |
-| userId | UUID | FOREIGN KEY | Reference to User |
-| name | String | NOT NULL | Goal name |
-| description | String | NULLABLE | Goal description |
-| targetAmount | Float | NOT NULL | Target amount to save |
-| savedAmount | Float | DEFAULT: 0 | Amount saved towards goal |
-| currency | String | NOT NULL | Goal currency |
-| targetDate | DateTime | NOT NULL | Target completion date |
-| createdAt | DateTime | DEFAULT: now() | Creation timestamp |
-| updatedAt | DateTime | AUTO UPDATE | Last update timestamp |
-| completed | Boolean | DEFAULT: false | Goal completion status |
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| category | Category | NOT NULL |
+| amount | Decimal(15,2) | NOT NULL |
+| period | Periodicity | NOT NULL |
+| createdAt | DateTime | DEFAULT now() |
 
-### 10. CurrencyRate
-**Purpose**: Current exchange rates for real-time currency conversion
+**Unique**: (id, userId)
+**Indexes**: (userId), (userId, category), (userId, period)
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique rate identifier |
-| base | String | NOT NULL | Base currency code |
-| target | String | NOT NULL | Target currency code |
-| rate | Float | NOT NULL | Current exchange rate |
-| updatedAt | DateTime | AUTO UPDATE | Last update timestamp |
+### PlannedEvent
 
-**Unique Constraint**: (base, target)
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| name | VarChar(200) | NOT NULL |
+| targetDate | DateTime | NOT NULL |
+| estimatedCost | Decimal(15,2) | NOT NULL |
+| savedSoFar | Decimal(15,2) | DEFAULT 0 |
+| currency | VarChar(3) | NOT NULL |
+| category | Category | NOT NULL |
+| recurrence | Periodicity | DEFAULT ONE_TIME |
+| completed | Boolean | DEFAULT false |
+| completedTxId | String | FK → Transaction, UNIQUE, NULLABLE |
+| createdAt | DateTime | DEFAULT now() |
 
-### 11. CurrencyRateHistory ✨ **NEW**
-**Purpose**: Historical exchange rates for accurate historical currency conversion
+**Unique**: (id, userId)
+**Indexes**: (userId, completed), (userId, targetDate), (userId, category), (targetDate)
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique rate identifier |
-| base | String | NOT NULL | Base currency code |
-| target | String | NOT NULL | Target currency code |
-| rate | Float | NOT NULL | Exchange rate for the date |
-| rateDate | DateTime | NOT NULL | Date this rate was valid for |
-| createdAt | DateTime | DEFAULT: now() | Record creation timestamp |
+### CurrencyRate
 
-**Unique Constraint**: (base, target, rateDate)
-**Indexes**: 
-- (base, target) for currency pair lookups
-- (rateDate) for date-based queries
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| base | VarChar(3) | NOT NULL |
+| target | VarChar(3) | NOT NULL |
+| rate | Decimal(18,8) | NOT NULL |
+| updatedAt | DateTime | AUTO UPDATE |
+
+**Unique**: (base, target)
+
+### CurrencyRateHistory
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| base | VarChar(3) | NOT NULL |
+| target | VarChar(3) | NOT NULL |
+| rate | Decimal(18,8) | NOT NULL |
+| rateDate | DateTime | NOT NULL |
+| createdAt | DateTime | DEFAULT now() |
+
+**Unique**: (base, target, rateDate)
+**Indexes**: (base, target), (rateDate)
+
+### ChatMessage
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User (CASCADE) |
+| role | VarChar(10) | NOT NULL ("user" or "ai") |
+| content | Text | NOT NULL |
+| intent | VarChar(50) | NULLABLE |
+| sessionId | VarChar(100) | NULLABLE |
+| toolCalls | JSON | NULLABLE |
+| actions | JSON | NULLABLE |
+| metadata | JSON | NULLABLE |
+| createdAt | DateTime | DEFAULT now() |
+
+**Indexes**: (userId, createdAt), (userId, sessionId)
+
+### UserMemory
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User (CASCADE) |
+| category | VarChar(50) | NOT NULL |
+| key | VarChar(100) | NOT NULL |
+| value | JSON | NOT NULL |
+| description | VarChar(500) | NULLABLE |
+| createdAt | DateTime | DEFAULT now() |
+| updatedAt | DateTime | AUTO UPDATE |
+
+**Unique**: (userId, category, key)
+**Indexes**: (userId), (userId, category)
+
+### Assistant
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| name | VarChar(50) | UNIQUE, NOT NULL |
+| displayName | VarChar(100) | NOT NULL |
+| description | VarChar(500) | NULLABLE |
+| createdAt | DateTime | DEFAULT now() |
+
+### UserAssistant
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| id | UUID | PK |
+| userId | UUID | FK → User |
+| assistantId | UUID | FK → Assistant |
+| activatedAt | DateTime | DEFAULT now() |
+| settings | JSON | NULLABLE |
+
+**Unique**: (userId, assistantId)
 
 ## Enums
 
 ### Category
-Transaction and budget categories:
-- `GROCERY`
-- `UTILITIES`
-- `TRANSPORTATION`
-- `CLOTHING`
-- `ENTERTAINMENT`
-- `RENT`
-- `HEALTHCARE`
-- `OTHER`
+`GROCERY` · `UTILITIES` · `TRANSPORTATION` · `CLOTHING` · `ENTERTAINMENT` · `RENT` · `HEALTHCARE` · `OTHER`
 
 ### AssetType
-Types of investment assets:
-- `STOCK` - Equity stocks
-- `CRYPTO` - Cryptocurrencies
-- `METAL` - Precious metals
+`STOCK` · `CRYPTO` · `METAL` · `LIQUID`
 
 ### AccountType
-Types of financial accounts:
-- `SAVINGS` - Savings account
-- `CURRENT` - Current/checking account
-- `CREDIT_CARD` - Credit card account
-- `CASH` - Cash on hand
+`SAVINGS` · `CURRENT` · `CREDIT_CARD` · `CASH`
 
 ### Periodicity
-Budget and recurring periods:
-- `DAILY` - Daily period
-- `WEEKLY` - Weekly period
-- `MONTHLY` - Monthly period
-- `QUARTERLY` - Quarterly period
-- `HALF_YEARLY` - Half-yearly period
-- `YEARLY` - Yearly period
-- `ONE_TIME` - One-time event (for planned events)
+`DAILY` · `WEEKLY` · `MONTHLY` · `QUARTERLY` · `HALF_YEARLY` · `YEARLY` · `ONE_TIME`
 
 ### TransactionType
-Types of financial transactions:
-- `INCOME` - Money coming in (salary, dividends, gifts, etc.)
-- `EXPENSE` - Money going out (purchases, bills, transfers, etc.)
+`INCOME` · `EXPENSE`
 
-## Key Relationships
+## Database Constraints
 
-1. **User-Centric Design**: All primary entities are linked to the User table
-2. **Multi-Currency Support**: Holdings and transactions support different currencies with conversion to user's base currency
-3. **Flexible Asset Management**: Holdings support multiple platforms and asset types
-4. **Transaction Tracking**: Transactions can be linked to specific bank accounts
-5. **Goal-Oriented Finance**: Both goals and planned events help users save for specific targets
-6. **Modular Assistants**: Plugin-style assistant system for different features
+- **Positivity**: All monetary values enforced as positive (>0) or non-negative (>=0) at DB level
+- **Currency format**: 3-letter uppercase validated with regex `^[A-Z]{3}$`
+- **Email validation**: Enforced at database level
+- **Business logic**: Target dates must be in future; same-currency rate pairs must equal 1.0
+- **Credit card**: Balance can be negative; other account types must be non-negative
 
-## Database Features
+## Optimization Summary
 
-- **UUID Primary Keys**: All entities use UUID for better distribution and security
-- **Soft Relationships**: Some foreign keys are nullable to maintain data integrity
-- **Automatic Timestamps**: Created/updated timestamps for audit trails
-- **Currency Flexibility**: Multi-currency support with automatic conversion
-- **Extensible Design**: JSON settings field for future customizations
+The schema has been comprehensively optimized for a financial application:
+
+| Optimization | Details |
+|---|---|
+| Float → Decimal | Eliminates floating-point rounding errors in monetary calculations |
+| String → VarChar/Text | VarChar length constraints enforce input validation; Text used for unbounded content (e.g. ChatMessage.content) |
+| Index consolidation | Redundant single-column indexes removed; compound indexes cover all query patterns |
+| Database constraints | Business rules enforced at DB level (positivity, format, logic) |
+| Atomic operations | Currency rate updates use `prisma.$transaction` instead of `Promise.all` |
+| Automated maintenance | Monthly VACUUM FULL + REINDEX + ANALYZE (1st of month, 2AM UTC) via `src/jobs/database_maintenance.job.ts` |
+
+**Precision tiers**:
+- `DECIMAL(18,8)` — Exchange rates (prevents rounding in multi-step conversions)
+- `DECIMAL(15,2)` — Monetary amounts (transactions, balances, goals, budgets)
+- `DECIMAL(20,8)` — Investment quantities (crypto fractional shares)
+- `DECIMAL(15,4)` — Asset prices (stock/crypto market prices)
+
+**Index strategy**: Single compound unique indexes (e.g., `CurrencyRateHistory_base_target_rateDate_key`) cover multiple query patterns without redundant single-column indexes.
 
 ## Migration History
 
-The database has evolved through several migrations:
-1. **Initial Migration** (20250809054235): Complete schema with all core tables and relationships
-2. **Planned Event Enhancement** (20250809065218): Added completedTxId field to PlannedEvent for transaction tracking
-3. **Referential Integrity** (20250809135652): Enhanced foreign key constraints and database indexes for performance
-4. **Compound Unique Constraints** (20250809142129): Added composite unique constraints for data integrity
-5. **Currency Rate History** (20250810045220): Added CurrencyRateHistory table for historical exchange rate tracking ✨ **NEW**
-6. **Schema Optimization** (20250810054011): Replaced Float with Decimal for monetary values, optimized String to VarChar types ✨ **NEW**
-7. **Data Integrity Constraints** (20250810054013): Added database-level constraints for data validation ✨ **NEW**
-8. **User Memory** (20260701094509): Added UserMemory table for storing personalized user preferences and memories ✨ **NEW**
-
-### 12. ChatMessage ✨ **UPDATED**
-**Purpose**: Stores AI assistant conversation history for session persistence
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique message identifier |
-| userId | UUID | FOREIGN KEY (CASCADE) | Reference to User |
-| role | VarChar(10) | NOT NULL | Message author: "user" or "ai" |
-| content | Text | NOT NULL | Message content |
-| intent | VarChar(50) | NULLABLE | Conversation intent (e.g., "assistant") |
-| sessionId | VarChar(100) | NULLABLE | Groups messages in a conversation session |
-| toolCalls | JSON | NULLABLE | Tools the assistant invoked during this turn |
-| actions | JSON | NULLABLE | Write actions executed (create_transaction, update_goal, etc.) |
-| metadata | JSON | NULLABLE | Flexible: model name, token count, latency, etc. |
-| createdAt | DateTime | DEFAULT: now() | Message timestamp |
-
-**Indexes**:
-- (userId, createdAt) for chronological message retrieval
-- (userId, sessionId) for session-scoped message queries
-
-### 13. UserMemory ✨ **NEW**
-**Purpose**: Stores personalized user preferences, risk profiles, and wishlists/favourites for AI context-awareness
-
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| id | UUID | PRIMARY KEY | Unique memory identifier |
-| userId | UUID | FOREIGN KEY (CASCADE) | Reference to User |
-| category | VarChar(50) | NOT NULL | Preference category (e.g., "investment_preferences", "risk_profile", "wishlist") |
-| key | VarChar(100) | NOT NULL | Preference key (e.g., "valuation", "tolerance", "stocks") |
-| value | JSON | NOT NULL | Structured preference value (e.g., JSON object or array) |
-| description | VarChar(500) | NULLABLE | Optional description of the preference |
-| createdAt | DateTime | DEFAULT: now() | Creation timestamp |
-| updatedAt | DateTime | AUTO UPDATE | Last update timestamp |
-
-**Unique Constraint**: (userId, category, key)
-**Indexes**:
-- (userId) for user-scoped preference queries
-- (userId, category) for category-scoped preference queries
-
-This schema supports a comprehensive personal finance management system with multi-currency support, investment tracking, budgeting, goal setting, AI-powered financial assistance, and financial reporting capabilities.
-
-## 🆕 Recent Schema Enhancements
-
-### 🎯 Schema Type Optimization & Data Integrity (v4.0) ✨ **LATEST**
-Major schema optimization focusing on precision, storage efficiency, and data integrity:
-
-#### **Decimal Precision for Financial Data**
-- **Exchange Rates**: `DECIMAL(18,8)` for ultra-high precision (prevents rounding errors in currency conversions)
-- **Monetary Amounts**: `DECIMAL(15,2)` for transaction amounts, balances, goals, budgets
-- **Investment Quantities**: `DECIMAL(20,8)` for crypto assets requiring high precision
-- **Asset Prices**: `DECIMAL(15,4)` for stock/crypto prices with 4 decimal precision
-
-#### **Optimized String Types**
-- **Currency Codes**: `VarChar(3)` instead of `String` (ISO 4217 compliance)
-- **Email Addresses**: `VarChar(255)` with email format validation
-- **Names & Descriptions**: Appropriate length limits (50-1000 chars based on usage)
-- **Tickers & Platforms**: `VarChar(20)` and `VarChar(50)` respectively for trading data
-
-#### **Database-Level Constraints**
-- **Positivity Constraints**: All monetary values must be positive (>0) or non-negative (>=0) as appropriate
-- **Currency Format**: 3-letter uppercase currency codes validated with regex `^[A-Z]{3}$`
-- **Email Validation**: Proper email format enforced at database level
-- **Business Logic**: Target dates must be in future, same-currency rates only when rate = 1.0
-- **Credit Card Logic**: Credit card balances can be negative, other account types must be non-negative
-
-#### **Performance & Storage Benefits**
-- **30-40% Storage Reduction**: VarChar vs String optimization for text fields
-- **Zero Precision Loss**: Decimal types eliminate floating-point rounding errors
-- **Faster Queries**: Smaller field sizes improve index performance
-- **Data Quality**: Database constraints prevent invalid data at source
-
-### Currency Rate History System (v3.0) ✨ **PREVIOUS**
-- **Historical Exchange Rates**: New CurrencyRateHistory table for date-specific exchange rates
-- **Accurate Historical Conversion**: Transactions now convert using rates from their actual dates
-- **Dual Storage System**: Both current and historical rates maintained automatically
-- **Migration Applied**: Database migration 20250810045220 successfully deployed
-- **Smart Fallback System**: Uses previous day's rates when API fails (no hardcoded fallbacks)
-- **Enhanced Financial Reporting**: All reports now use historically accurate currency conversions
-
-### Database Integrity & Performance (v2.0) ✨ **PREVIOUS**
-- **Enhanced Constraints**: Composite unique constraints for improved data integrity
-- **Referential Integrity**: Strengthened foreign key relationships across all tables
-- **Performance Optimization**: Strategic database indexes for faster query execution
-- **Transaction Tracking**: PlannedEvent can now track completion via linked transactions
-
-### Data Architecture Foundation
-- **Complete Type System**: Full TypeScript integration with Prisma-generated types
-- **Service Layer Integration**: Database operations abstracted through dedicated service functions
-- **Error Handling**: Structured error handling with proper database error translation
-
-### Financial Analytics Foundation
-- **Category Grouping**: Enhanced for expense summary and category breakdown reporting
-- **Date Range Queries**: Optimized for time-based financial analysis with accurate date calculations
-- **Type-Based Filtering**: Enables income vs expense separation for comprehensive insights
-- **Aggregation Support**: Database-level calculations for reporting efficiency across all report types
-- **Goal Timeline Analysis**: Consistent time calculations with logical overdue handling and realistic planning
-- **Portfolio Analytics**: Asset allocation calculations with multi-currency support
-- **Budget Variance Analysis**: Database support for budget vs actual spending comparisons
-- **Progress Tracking**: Goal completion percentages and timeline analysis capabilities
-- **Pattern Detection**: Transaction pattern recognition for recurring payment identification
-- **Frequency Analysis**: Automatic classification of transaction recurrence (weekly, monthly, quarterly, etc.)
-
-### Data Integrity Features
-- **Automatic Timestamps**: All entities track creation and modification times
-- **UUID Primary Keys**: Enhanced security and distribution across all tables
-- **Referential Integrity**: Proper foreign key relationships with cascade handling
-- **Default Values**: Sensible defaults for optional fields to ensure data consistency
-- **Composite Constraints**: Prevent duplicate records with multi-field unique constraints
-- **Indexed Relationships**: Optimized foreign key relationships for faster queries
-
-### Service Layer Integration ✨ **NEW**
-- **Typed Operations**: All database operations use structured TypeScript interfaces
-- **Error Translation**: Database errors automatically converted to domain-specific errors
-- **Validation Layer**: Business logic validation before database operations
-- **Consistent Patterns**: Uniform CRUD operations across all entities 
+1. `20250809054235` — Initial schema with all core tables
+2. `20250809065218` — PlannedEvent completion tracking (`completedTxId`)
+3. `20250809135652` — Referential integrity and indexes
+4. `20250809142129` — Compound unique constraints
+5. `20250810045220` — CurrencyRateHistory table
+6. `20250810054011` — Schema optimization (Float → Decimal, String → VarChar)
+7. `20250810054012` — Data integrity constraints
+8. `20250810054013` — Remaining constraints
+9. `20250810060001` — Optimize database size
+10. `20250810070001` — Consolidate redundant indexes
+11. `20251027111512` — Goals naming fix
+12. `20260330095117` — ChatMessage table
+13. `20260616114137` — Agent session columns (sessionId, toolCalls, actions, metadata on ChatMessage)
+14. `20260701094509` — UserMemory table
+15. `20260716061203` — HoldingHistory table
+16. `20260716075307` — Widen ticker (→ VarChar(50)) and name (→ VarChar(255)) columns
+17. `20260716080054` — Add LIQUID asset type
+18. `20260716080434` — Allow zero avgCost on holdings
+19. `20260716080550` — Allow zero quantity on holdings
