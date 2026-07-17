@@ -1,6 +1,6 @@
 # Azerro Backend — Database Schema
 
-PostgreSQL database managed with Prisma ORM (14 tables). All monetary values use `DECIMAL` types for precision; all string fields use `VarChar` with appropriate length constraints.
+PostgreSQL database managed with Prisma ORM (14 tables). All monetary values use `DECIMAL` types for precision; string fields use `VarChar` with length constraints for validation or `Text` for unbounded content.
 
 ## Entity Relationships
 
@@ -271,7 +271,7 @@ The schema has been comprehensively optimized for a financial application:
 | Optimization | Details |
 |---|---|
 | Float → Decimal | Eliminates floating-point rounding errors in monetary calculations |
-| String → VarChar | 30-40% storage reduction with appropriate length constraints |
+| String → VarChar/Text | VarChar length constraints enforce input validation; Text used for unbounded content (e.g. ChatMessage.content) |
 | Index consolidation | Redundant single-column indexes removed; compound indexes cover all query patterns |
 | Database constraints | Business rules enforced at DB level (positivity, format, logic) |
 | Atomic operations | Currency rate updates use `prisma.$transaction` instead of `Promise.all` |
