@@ -1,18 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import prisma from "../../utils/db";
 import { getAccessToken, indmoneyService } from "../../services/brokers/indmoney.service";
-
-const mcpUrl = process.env.INDMONEY_MCP_URL || "https://mcp.indmoney.com/mcp";
-
-async function createMcpClient(token: string): Promise<Client> {
-  const client = new Client({ name: "azerro-ai-client", version: "1.0.0" }, { capabilities: {} });
-  const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  await client.connect(transport);
-  return client;
-}
+import { createIndmoneyMcpClient, parseMcpToolJson } from "../../services/brokers/mcp_client";
 
 /**
  * Checks connection status of INDMoney broker.
@@ -63,7 +52,7 @@ export async function searchInstrument(userId: string, query: string): Promise<a
   // Real MCP call
   let client: Client | null = null;
   try {
-    client = await createMcpClient(status.token!);
+    client = await createIndmoneyMcpClient(status.token!);
 
     // Try searching in IN_STOCKS first, then US_STOCKS
     const filterTypes = ["IN_STOCKS", "US_STOCKS"];
@@ -83,20 +72,15 @@ export async function searchInstrument(userId: string, query: string): Promise<a
 
         anySucceeded = true;
 
-        if (response && Array.isArray((response as any).content)) {
-          const text = (response as any).content[0]?.text;
-          if (text) {
-            const parsed = JSON.parse(text);
-            if (parsed && parsed.length > 0) {
-              matches = parsed.map((m: any) => ({
-                symbol: m.ind_key,
-                name: m.name,
-                assetType: "STOCK",
-                exchange: filterType === "US_STOCKS" ? "US" : "NSE",
-              }));
-              break;
-            }
-          }
+        const parsed = parseMcpToolJson<any[]>(response);
+        if (parsed && parsed.length > 0) {
+          matches = parsed.map((m: any) => ({
+            symbol: m.ind_key,
+            name: m.name,
+            assetType: "STOCK",
+            exchange: filterType === "US_STOCKS" ? "US" : "NSE",
+          }));
+          break;
         }
       } catch (err) {
         lastError = err;
@@ -227,7 +211,7 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
   // Real MCP call
   let client: Client | null = null;
   try {
-    client = await createMcpClient(status.token!);
+    client = await createIndmoneyMcpClient(status.token!);
 
     let details: any = null;
 
@@ -260,21 +244,15 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
             },
           });
 
-          if (lookupResponse && Array.isArray((lookupResponse as any).content)) {
-            const text = (lookupResponse as any).content[0]?.text;
-            if (text) {
-              const matches = JSON.parse(text);
-              if (matches && matches.length > 0) {
-                // Try to find exact case-insensitive match for the ind_key or symbol
-                const exactMatch = matches.find(
-                  (m: any) => m.ind_key.toUpperCase() === symbol.toUpperCase()
-                );
-                indKey = exactMatch ? exactMatch.ind_key : matches[0].ind_key;
-                resolvedMarket = filterType;
-                resolved = true;
-                break;
-              }
-            }
+          const matches = parseMcpToolJson<any[]>(lookupResponse);
+          if (matches && matches.length > 0) {
+            const exactMatch = matches.find(
+              (m: any) => m.ind_key.toUpperCase() === symbol.toUpperCase()
+            );
+            indKey = exactMatch ? exactMatch.ind_key : matches[0].ind_key;
+            resolvedMarket = filterType;
+            resolved = true;
+            break;
           }
         } catch (err) {
           console.error(`Failed to lookup key in ${filterType}:`, err);
@@ -293,15 +271,11 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
         },
       });
 
-      if (response && Array.isArray((response as any).content)) {
-        const text = (response as any).content[0]?.text;
-        if (text) {
-          const parsed = JSON.parse(text);
-          details = parsed[indKey] || null;
-        }
+      const parsed = parseMcpToolJson<Record<string, any>>(response);
+      if (parsed) {
+        details = parsed[indKey] || null;
       }
     } else if (resolvedMarket === "MF") {
-      // Call get_mf_funds_details for Mutual Funds
       const response = await client.callTool({
         name: "get_mf_funds_details",
         arguments: {
@@ -310,14 +284,8 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
         },
       });
 
-      if (response && Array.isArray((response as any).content)) {
-        const text = (response as any).content[0]?.text;
-        if (text) {
-          details = JSON.parse(text);
-        }
-      }
+      details = parseMcpToolJson(response);
     } else {
-      // Try get_us_stocks_details for US stocks
       const response = await client.callTool({
         name: "get_us_stocks_details",
         arguments: {
@@ -326,12 +294,9 @@ export async function getInstrumentDetails(userId: string, symbol: string): Prom
         },
       });
 
-      if (response && Array.isArray((response as any).content)) {
-        const text = (response as any).content[0]?.text;
-        if (text) {
-          const parsed = JSON.parse(text);
-          details = parsed[indKey] || null;
-        }
+      const parsed = parseMcpToolJson<Record<string, any>>(response);
+      if (parsed) {
+        details = parsed[indKey] || null;
       }
     }
 

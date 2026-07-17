@@ -1,4 +1,4 @@
-import { FunctionTool, Context } from "@google/adk";
+import { FunctionTool } from "@google/adk";
 import { handleGetTransactions } from "../../controllers/transaction.controller";
 import { handleGetGoals } from "../../controllers/goal.controller";
 import { handleGetBudgets } from "../../controllers/budget.controller";
@@ -18,22 +18,17 @@ import {
     getHoldingsHistorySchema,
     getBankAccountsSchema,
 } from "../../validations/data_tool.schema";
-
-function getUserId(ctx?: Context): string {
-    const userId = ctx?.state.get<string>("userId");
-    if (!userId) throw new Error("userId not found in session state");
-    return userId;
-}
+import { getUserId, withToolErrorHandling } from "../../utils/adk_context";
 
 export const getTransactionsTool = new FunctionTool({
     name: "get_transactions",
     description:
         "Fetches the authenticated user's transactions. Optionally filter by category, type, date range, or limit the number of results. Returns an array of transaction objects.",
     parameters: getTransactionsSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetTransactions(userId, input);
-    },
+    }, "Failed to fetch transactions"),
 });
 
 export const getGoalsTool = new FunctionTool({
@@ -41,10 +36,10 @@ export const getGoalsTool = new FunctionTool({
     description:
         "Fetches the user's savings goals. Returns active (not completed) goals by default. Each goal includes name, target amount, saved amount, and target date.",
     parameters: getGoalsSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetGoals(userId, input.includeCompleted);
-    },
+    }, "Failed to fetch goals"),
 });
 
 export const getBudgetsTool = new FunctionTool({
@@ -52,10 +47,10 @@ export const getBudgetsTool = new FunctionTool({
     description:
         "Fetches the user's budgets. Returns each budget's category, budget amount, and period (WEEKLY/MONTHLY/ANNUAL).",
     parameters: getBudgetsSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetBudgets(userId, input.category);
-    },
+    }, "Failed to fetch budgets"),
 });
 
 export const getPlannedEventsTool = new FunctionTool({
@@ -63,10 +58,10 @@ export const getPlannedEventsTool = new FunctionTool({
     description:
         "Fetches the user's planned financial events (upcoming expenses or income). Returns event name, estimated cost, target date, and completion status.",
     parameters: getPlannedEventsSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetPlannedEvents(userId, input.includeCompleted);
-    },
+    }, "Failed to fetch planned events"),
 });
 
 export const getUserProfileTool = new FunctionTool({
@@ -74,10 +69,10 @@ export const getUserProfileTool = new FunctionTool({
     description:
         "Fetches the authenticated user's financial profile including their base currency, monthly income, and name. Use this to understand the user's financial context.",
     parameters: getUserProfileSchema,
-    execute: async (_input, ctx) => {
+    execute: withToolErrorHandling(async (_input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetUserProfile(userId);
-    },
+    }, "Failed to fetch user profile"),
 });
 
 export const getReportTool = new FunctionTool({
@@ -89,14 +84,10 @@ export const getReportTool = new FunctionTool({
         `"category_breakdown" (expense breakdown by category). ` +
         `Use this instead of manually computing totals from raw transactions — it handles currency conversion automatically.`,
     parameters: getReportSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
-        try {
-            return await handleGetReport(userId, input);
-        } catch (err: any) {
-            return { error: err.message || "Failed to generate report" };
-        }
-    },
+        return await handleGetReport(userId, input);
+    }, "Failed to generate report"),
 });
 
 export const getHoldingsTool = new FunctionTool({
@@ -104,10 +95,10 @@ export const getHoldingsTool = new FunctionTool({
     description:
         "Fetches the user's investment holdings (stocks, crypto, metals). Returns each holding's ticker, name, quantity, average cost, last price, and converted value.",
     parameters: getHoldingsSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetHoldings(userId, input.assetType, input.onlyWithBalance);
-    },
+    }, "Failed to fetch holdings"),
 });
 
 export const getHoldingsHistoryTool = new FunctionTool({
@@ -115,10 +106,10 @@ export const getHoldingsHistoryTool = new FunctionTool({
     description:
         "Fetches the historical snapshots of the user's investment holdings over time, including sold (zero-balance) assets. Returns a list of historical holding snapshots with recorded dates.",
     parameters: getHoldingsHistorySchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetHoldingHistory(userId, input.limit, input.sinceDays, input.ticker);
-    },
+    }, "Failed to fetch holdings history"),
 });
 
 export const getBankAccountsTool = new FunctionTool({
@@ -126,10 +117,10 @@ export const getBankAccountsTool = new FunctionTool({
     description:
         "Fetches the user's bank accounts. Returns each account's name, type, balance, and currency.",
     parameters: getBankAccountsSchema,
-    execute: async (input, ctx) => {
+    execute: withToolErrorHandling(async (input, ctx) => {
         const userId = getUserId(ctx);
         return await handleGetBankAccounts(userId, input.type);
-    },
+    }, "Failed to fetch bank accounts"),
 });
 
 export const dataTools = [

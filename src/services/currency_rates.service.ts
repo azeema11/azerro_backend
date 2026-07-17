@@ -1,5 +1,7 @@
 import prisma from '../utils/db';
 import { safeGet, safeSetex, safeBatchSetex } from '../utils/redis';
+import { getSecondsUntilMidnight, startOfUtcDay, formatDateKey } from '../utils/date';
+import { toNumberSafe } from '../utils/utils';
 
 type ExchangeRateResponse = {
     base: string;
@@ -32,9 +34,7 @@ export async function updateCurrencyRates(base = 'USD') {
         const rates = data.rates;
         console.log(`Found ${Object.keys(rates).length} exchange rates`);
 
-        // Get today's date for historical record
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0); // Set to UTC midnight for consistency
+        const today = startOfUtcDay(new Date());
 
         // Filter out invalid currencies:
         // 1. Target equals base (database constraint prevents same currency pairs)
@@ -85,12 +85,7 @@ export async function updateCurrencyRates(base = 'USD') {
 
         await prisma.$transaction([...currentRateOps, ...historicalRateOps]);
 
-        // Cache rates in Redis with expiration at UTC midnight
-        const now = new Date();
-        const tomorrow = new Date(now);
-        tomorrow.setUTCHours(24, 0, 0, 0); // Midnight next day
-        const ttlSeconds = Math.max(1, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
-
+        const ttlSeconds = getSecondsUntilMidnight();
         const entries = Object.entries(completeRates).map(([target, rate]) => ({
             key: `rate:${base}:${target}`,
             ttl: ttlSeconds,
@@ -115,10 +110,7 @@ async function usePreviousDayRates(base = 'USD') {
     try {
         console.log(`Using previous day's rates for base: ${base}...`);
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
-
-
+        const today = startOfUtcDay(new Date());
 
         // Find the most recent date before today that has rates
         const mostRecentRateDate = await prisma.currencyRateHistory.findFirst({
@@ -185,21 +177,16 @@ async function usePreviousDayRates(base = 'USD') {
 
         await prisma.$transaction([...currentRateOps, ...historicalRateOps]);
 
-        // Cache rates in Redis with expiration at UTC midnight
-        const nowTime = new Date();
-        const tomorrowTime = new Date(nowTime);
-        tomorrowTime.setUTCHours(24, 0, 0, 0);
-        const ttlSeconds = Math.max(1, Math.floor((tomorrowTime.getTime() - nowTime.getTime()) / 1000));
-
+        const ttlSeconds = getSecondsUntilMidnight();
         const entries = previousRates.map(prevRate => ({
             key: `rate:${prevRate.base}:${prevRate.target}`,
             ttl: ttlSeconds,
-            value: typeof prevRate.rate === 'number' ? prevRate.rate : prevRate.rate.toNumber(),
+            value: toNumberSafe(prevRate.rate),
         }));
         await safeBatchSetex(entries);
         console.log(`✅ Previous day currency rates cached in Redis for base ${base} (TTL: ${ttlSeconds}s)`);
 
-        console.log(`✅ Used previous day's rates (${previousRates.length} rates) from ${mostRecentRateDate.rateDate.toISOString().split('T')[0]} for base ${base}`);
+        console.log(`✅ Used previous day's rates (${previousRates.length} rates) from ${formatDateKey(mostRecentRateDate.rateDate)} for base ${base}`);
         return true;
     } catch (err) {
         console.error(`❌ Failed to use previous day's rates for base ${base}:`, err);
@@ -209,15 +196,12 @@ async function usePreviousDayRates(base = 'USD') {
 
 export async function ensureCurrencyRatesExist() {
     try {
-        const currentRatesCount = await prisma.currencyRate.count();
+        const today = startOfUtcDay(new Date());
 
-        // Check if we have historical rates for today
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
-
-        const todayHistoricalCount = await prisma.currencyRateHistory.count({
-            where: { rateDate: today }
-        });
+        const [currentRatesCount, todayHistoricalCount] = await Promise.all([
+            prisma.currencyRate.count(),
+            prisma.currencyRateHistory.count({ where: { rateDate: today } }),
+        ]);
 
         // If no current rates OR no historical rates for today, fetch fresh rates
         if (currentRatesCount === 0 || todayHistoricalCount === 0) {
@@ -322,7 +306,7 @@ async function getHistoricalUSDToTargetRate(target: string, targetDate: Date): P
         where: { rateDate: targetDate, ...pairFilter },
     });
     if (record) {
-        const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+        const rate = toNumberSafe(record.rate);
         if (Number.isFinite(rate) && rate > 0) {
             return rate;
         }
@@ -335,7 +319,7 @@ async function getHistoricalUSDToTargetRate(target: string, targetDate: Date): P
         take: 5,
     });
     for (const r of pastRecords) {
-        const rate = typeof r.rate === 'number' ? r.rate : r.rate.toNumber();
+        const rate = toNumberSafe(r.rate);
         if (Number.isFinite(rate) && rate > 0) {
             return rate;
         }
@@ -348,7 +332,7 @@ async function getHistoricalUSDToTargetRate(target: string, targetDate: Date): P
         take: 5,
     });
     for (const r of futureRecords) {
-        const rate = typeof r.rate === 'number' ? r.rate : r.rate.toNumber();
+        const rate = toNumberSafe(r.rate);
         if (Number.isFinite(rate) && rate > 0) {
             return rate;
         }
@@ -359,7 +343,7 @@ async function getHistoricalUSDToTargetRate(target: string, targetDate: Date): P
         where: { base_target: { base: 'USD', target } }
     });
     if (currentRate) {
-        const rate = typeof currentRate.rate === 'number' ? currentRate.rate : currentRate.rate.toNumber();
+        const rate = toNumberSafe(currentRate.rate);
         if (Number.isFinite(rate) && rate > 0) {
             return rate;
         }
@@ -382,10 +366,8 @@ export async function getHistoricalExchangeRate(
     try {
         if (from === to) return 1.0;
 
-        const targetDate = new Date(date);
-        targetDate.setUTCHours(0, 0, 0, 0);
-
-        const dateStr = targetDate.toISOString().split('T')[0];
+        const targetDate = startOfUtcDay(date);
+        const dateStr = formatDateKey(targetDate);
         const cacheKey = `rate:historical:${from}:${to}:${dateStr}`;
         const cached = await safeGet(cacheKey);
         if (cached) {
@@ -412,34 +394,29 @@ export async function getHistoricalExchangeRate(
             let rateUSDToTo: number;
 
             if (commonDate) {
-                const fromRecord = await prisma.currencyRateHistory.findFirst({
-                    where: { rateDate: commonDate, base: 'USD', target: from }
-                });
-                const toRecord = await prisma.currencyRateHistory.findFirst({
-                    where: { rateDate: commonDate, base: 'USD', target: to }
-                });
+                const [fromRecord, toRecord] = await Promise.all([
+                    prisma.currencyRateHistory.findFirst({ where: { rateDate: commonDate, base: 'USD', target: from } }),
+                    prisma.currencyRateHistory.findFirst({ where: { rateDate: commonDate, base: 'USD', target: to } }),
+                ]);
 
                 if (!fromRecord || !toRecord) {
-                    throw new Error(`Failed to load historical records on common date ${commonDate.toISOString().split('T')[0]}`);
+                    throw new Error(`Failed to load historical records on common date ${formatDateKey(commonDate)}`);
                 }
 
-                rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
-                rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
+                rateUSDToFrom = toNumberSafe(fromRecord.rate);
+                rateUSDToTo = toNumberSafe(toRecord.rate);
             } else {
-                // Fallback to current rates (which is a single shared current snapshot)
-                const fromRecord = await prisma.currencyRate.findUnique({
-                    where: { base_target: { base: 'USD', target: from } }
-                });
-                const toRecord = await prisma.currencyRate.findUnique({
-                    where: { base_target: { base: 'USD', target: to } }
-                });
+                const [fromRecord, toRecord] = await Promise.all([
+                    prisma.currencyRate.findUnique({ where: { base_target: { base: 'USD', target: from } } }),
+                    prisma.currencyRate.findUnique({ where: { base_target: { base: 'USD', target: to } } }),
+                ]);
 
                 if (!fromRecord || !toRecord) {
                     throw new Error(`No current exchange rates found to derive ${from} to ${to}. Ensure currency rates are initialized.`);
                 }
 
-                rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
-                rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
+                rateUSDToFrom = toNumberSafe(fromRecord.rate);
+                rateUSDToTo = toNumberSafe(toRecord.rate);
             }
 
             if (!Number.isFinite(rateUSDToFrom) || rateUSDToFrom <= 0) {
@@ -456,12 +433,9 @@ export async function getHistoricalExchangeRate(
             throw new Error(`Invalid computed historical exchange rate of ${rate} from ${from} to ${to} on ${dateStr}.`);
         }
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
+        const today = startOfUtcDay(new Date());
         const isHistorical = targetDate.getTime() < today.getTime();
-        const ttl = isHistorical
-            ? 604800 // Cache historical rates for 7 days
-            : Math.max(1, Math.floor(((new Date(today.getTime() + 86400000)).getTime() - Date.now()) / 1000));
+        const ttl = isHistorical ? 604800 : getSecondsUntilMidnight();
 
         await safeSetex(cacheKey, ttl, rate);
         return rate;

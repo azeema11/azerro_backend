@@ -1,4 +1,64 @@
 import { Periodicity } from "@prisma/client";
+import { ValidationError } from "./prisma_errors";
+
+export function validateDateString(value: string | undefined, label: string): void {
+    if (value !== undefined && isNaN(Date.parse(value))) {
+        throw new ValidationError(`Invalid ${label} format: ${value}`, 'Date', undefined, { field: label, validationType: 'business' });
+    }
+}
+
+export function formatDateKey(date: Date): string {
+    return date.toISOString().split('T')[0];
+}
+
+export function startOfUtcDay(date: Date): Date {
+    const d = new Date(date);
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+}
+
+export function getSecondsUntilMidnight(): number {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setUTCHours(24, 0, 0, 0);
+    return Math.max(1, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
+}
+
+export function formatPeriodLabel(period: Periodicity, date: Date, periodStart?: Date): string {
+    const utcOpts: Intl.DateTimeFormatOptions = { timeZone: 'UTC' };
+    switch (period) {
+        case Periodicity.DAILY:
+            return date.toLocaleString('default', { ...utcOpts, month: 'short', day: 'numeric', year: 'numeric' });
+        case Periodicity.WEEKLY:
+            return `Week of ${(periodStart ?? date).toLocaleString('default', { ...utcOpts, month: 'short', day: 'numeric', year: 'numeric' })}`;
+        case Periodicity.MONTHLY:
+            return date.toLocaleString('default', { ...utcOpts, month: 'long', year: 'numeric' });
+        case Periodicity.QUARTERLY:
+            return `Q${Math.floor(date.getUTCMonth() / 3) + 1} ${date.getUTCFullYear()}`;
+        case Periodicity.HALF_YEARLY:
+            return `${date.getUTCMonth() < 6 ? 'H1' : 'H2'} ${date.getUTCFullYear()}`;
+        case Periodicity.YEARLY:
+            return date.getUTCFullYear().toString();
+        default:
+            return period;
+    }
+}
+
+export function parseOptionalDateRange(start?: string, end?: string) {
+    validateDateString(start, 'start');
+    validateDateString(end, 'end');
+    const now = new Date();
+    const utcYear = now.getUTCFullYear();
+    const utcMonth = now.getUTCMonth();
+    const startDate = start ? new Date(start) : new Date(Date.UTC(utcYear, utcMonth, 1));
+    const endDate = end ? new Date(end) : new Date(Date.UTC(utcYear, utcMonth + 1, 0, 23, 59, 59, 999));
+    return {
+        startDate,
+        endDate,
+        startKey: formatDateKey(startDate),
+        endKey: formatDateKey(endDate),
+    };
+}
 
 export function daysBetween(from: Date, to: Date): number {
     // Calculate the time difference in milliseconds

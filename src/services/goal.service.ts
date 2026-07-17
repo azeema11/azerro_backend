@@ -1,7 +1,7 @@
 import { monthsBetween, recurrenceToMonthlyFactor } from "../utils/date";
 import prisma from "../utils/db";
 import { convertCurrencyFromDB } from "../utils/currency";
-import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { withNotFoundHandling, withPrismaErrorHandling, ValidationError, NotFoundError } from '../utils/prisma_errors';
 import { GoalUpdateData, CreateGoalInput } from '../types/service_types';
 import { withCache, safeDel } from '../utils/redis';
 import { toNumberSafe, subtractDecimal, calcGoalProgress } from '../utils/utils';
@@ -135,7 +135,7 @@ export const getGoalById = async (id: string, userId: string) => {
     });
 
     if (!goal) {
-        throw new Error('Goal not found');
+        throw new NotFoundError('Goal');
     }
 
     return { ...goal, progress: calcGoalProgress(goal.savedAmount, goal.targetAmount) };
@@ -191,11 +191,13 @@ export const contributeToGoal = async (id: string, userId: string, amount: numbe
 export async function checkGoalConflicts(userId: string) {
     try {
         const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) throw new Error('User not found');
+        if (!user) throw new NotFoundError('User');
 
         return withCache(`goal:conflicts:${userId}`, 600, async () => {
-            const goals = await prisma.goal.findMany({ where: { userId, completed: false } });
-            const events = await prisma.plannedEvent.findMany({ where: { userId, completed: false } });
+            const [goals, events] = await Promise.all([
+                prisma.goal.findMany({ where: { userId, completed: false } }),
+                prisma.plannedEvent.findMany({ where: { userId, completed: false } }),
+            ]);
 
             const now = new Date();
             let totalRequired = 0;
