@@ -1,14 +1,12 @@
-# Azerro Backend - Code Patterns & Best Practices Guide
+# Azerro Backend — Code Patterns & Best Practices
 
-## 📋 Overview
+Standardized patterns used across the codebase for consistency, type safety, and maintainability.
 
-This document outlines the standardized patterns and best practices implemented across the Azerro backend codebase. All modules follow these consistent patterns to ensure maintainability, type safety, and code quality.
+## Architecture Layers
 
-## 🏗️ Architecture Layers
+### Route Layer (`src/routes/`)
 
-### 1. **Route Layer** (`src/routes/`)
-**Responsibility**: Define API endpoints and HTTP routing
-**Pattern**: Standard REST conventions
+Standard REST conventions with consistent ordering:
 
 ```typescript
 import { Router } from 'express';
@@ -16,7 +14,6 @@ import { getGoals, createGoal, updateGoal, deleteGoal } from '../controllers/goa
 
 const router = Router();
 
-// Standard ordering: GET → POST → PUT → DELETE
 router.get('/', getGoals);
 router.get('/:id', getGoalById);
 router.post('/', createGoal);
@@ -26,76 +23,40 @@ router.delete('/:id', deleteGoal);
 export default router;
 ```
 
-### 2. **Controller Layer** (`src/controllers/`)
-**Responsibility**: Handle HTTP requests/responses, extract data, delegate to services
-**Pattern**: Consistent authorization, typed input creation, service delegation
+### Controller Layer (`src/controllers/`)
+
+Handle HTTP requests, extract data, delegate to services:
 
 ```typescript
-import { Response } from 'express';
-import { AuthRequest } from '../middlewares/auth.middleware';
-import { asyncHandler } from '../utils/async_handler';
-import { CreateGoalInput, GoalUpdateData } from '../types/service_types';
-import { createGoal as createGoalService } from '../services/goal.service';
-
 export const createGoal = asyncHandler(async (req: AuthRequest, res: Response) => {
-    // 1. Authorization check
     if (!req.userId) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // 2. Extract and structure data
     const { name, description, targetAmount, savedAmount, targetDate } = req.body;
+    const goalInput: CreateGoalInput = { name, targetAmount, targetDate, description, savedAmount };
 
-    // 3. Create typed input object
-    const goalInput: CreateGoalInput = {
-        name,
-        targetAmount,
-        targetDate,
-        description,
-        savedAmount
-    };
-
-    // 4. Delegate to service
     const goal = await createGoalService(req.userId, goalInput);
-
-    // 5. Return response
     res.status(201).json(goal);
 });
 ```
 
-### 3. **Service Layer** (`src/services/`)
-**Responsibility**: Business logic, validation, database operations
-**Pattern**: Typed inputs, structured error handling, business validation
+### Service Layer (`src/services/`)
+
+Business logic, validation, and database operations:
 
 ```typescript
-import prisma from '../utils/db';
-import { withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
-import { CreateGoalInput } from '../types/service_types';
-
-export const createGoal = async (
-    userId: string,
-    data: CreateGoalInput
-) => {
-    // 1. Business logic validation
+export const createGoal = async (userId: string, data: CreateGoalInput) => {
     if (!data.name?.trim()) {
-        throw new ValidationError(
-            'Goal name is required',
-            'Goal',
-            undefined,
-            { field: 'name', validationType: 'business' }
-        );
+        throw new ValidationError('Goal name is required', 'Goal', undefined,
+            { field: 'name', validationType: 'business' });
     }
 
     if (!data.targetAmount || data.targetAmount <= 0) {
-        throw new ValidationError(
-            'Target amount must be greater than 0',
-            'Goal',
-            undefined,
-            { field: 'targetAmount', validationType: 'business' }
-        );
+        throw new ValidationError('Target amount must be greater than 0', 'Goal', undefined,
+            { field: 'targetAmount', validationType: 'business' });
     }
 
-    // 2. Database operation with error handling
     return withPrismaErrorHandling(async () => {
         return await prisma.goal.create({
             data: {
@@ -111,12 +72,11 @@ export const createGoal = async (
 };
 ```
 
-### 4. **Type Layer** (`src/types/service_types.ts`)
-**Responsibility**: Define data contracts between layers
-**Pattern**: Separate interfaces for create/update operations
+### Type Layer (`src/types/service_types.ts`)
+
+Separate interfaces for create and update operations:
 
 ```typescript
-// Create Input Types
 export interface CreateGoalInput {
     name: string;
     targetAmount: number;
@@ -125,7 +85,6 @@ export interface CreateGoalInput {
     savedAmount?: number;
 }
 
-// Update Data Types  
 export interface GoalUpdateData {
     name?: string;
     description?: string;
@@ -137,251 +96,164 @@ export interface GoalUpdateData {
 }
 ```
 
-## 🔧 Standardized Patterns
+## Key Patterns
 
-### **Pattern 1: Controller Structure**
-Every controller follows this exact pattern:
+### Async Handler (`src/utils/async_handler.ts`)
 
-```typescript
-export const controllerFunction = asyncHandler(async (req: AuthRequest, res: Response) => {
-    // 1. Authorization check
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // 2. Extract parameters (if needed)
-    const { id } = req.params;
-
-    // 3. Extract and structure request body
-    const { field1, field2, field3 } = req.body;
-
-    // 4. Create typed input object
-    const inputData: CreateSomethingInput = {
-        field1,
-        field2,
-        field3
-    };
-
-    // 5. Call service with typed data
-    const result = await serviceFunction(req.userId, inputData);
-
-    // 6. Return appropriate response
-    res.status(201).json(result); // 201 for create, 200 for update/get, 204 for delete
-});
-```
-
-### **Pattern 2: Service Structure**
-Every service follows this exact pattern:
+Wraps all async controller functions to catch Promise rejections and forward them to Express error middleware:
 
 ```typescript
-export const serviceFunction = async (
-    userId: string,
-    data: CreateSomethingInput
-) => {
-    // 1. Input validation with structured errors
-    if (!data.requiredField) {
-        throw new ValidationError(
-            'Field is required',
-            'ResourceName',
-            undefined,
-            { field: 'requiredField', validationType: 'business' }
-        );
-    }
+import { Request, Response, NextFunction } from 'express';
 
-    // 2. Business logic validation
-    if (data.amount && data.amount <= 0) {
-        throw new ValidationError(
-            'Amount must be greater than 0',
-            'ResourceName',
-            undefined,
-            { field: 'amount', validationType: 'business' }
-        );
-    }
+type AsyncFunction = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
-    // 3. Database operation with error handling
-    return withPrismaErrorHandling(async () => {
-        return await prisma.resource.create({
-            data: {
-                userId,
-                ...data
-            },
-        });
-    }, 'ResourceName');
-};
-```
-
-### **Pattern 3: Route Structure**
-Every route file follows this exact pattern:
-
-```typescript
-import { Router } from 'express';
-import { 
-    getResources, 
-    getResourceById,
-    createResource, 
-    updateResource, 
-    deleteResource 
-} from '../controllers/resource.controller';
-
-const router = Router();
-
-// GET routes first
-router.get('/', getResources);
-router.get('/:id', getResourceById);
-
-// POST routes second
-router.post('/', createResource);
-
-// PUT routes third
-router.put('/:id', updateResource);
-
-// DELETE routes last
-router.delete('/:id', deleteResource);
-
-export default router;
-```
-
-### **Pattern 4: Decimal Type Handling** ✨ **NEW**
-Consistent patterns for handling Decimal types in financial calculations:
-
-```typescript
-import { Prisma } from '@prisma/client';
-import { toNumberSafe, addDecimal, multiplyDecimal, subtractDecimal, divideDecimal, compareDecimal } from '../utils/utils';
-
-// Service pattern for handling Decimal inputs
-export const calculateGoalProgress = async (goalId: string, userId: string) => {
-    const goal = await prisma.goal.findUnique({
-        where: { id_userId: { id: goalId, userId } }
-    });
-
-    if (!goal) {
-        throw new Error('Goal not found');
-    }
-
-    // Convert Decimal to number for calculations
-    const savedAmount = toNumberSafe(goal.savedAmount);
-    const targetAmount = toNumberSafe(goal.targetAmount);
-    
-    // Perform calculation
-    const progress = Math.min(100, (savedAmount / targetAmount) * 100);
-    
-    return { progress };
-};
-
-// Currency conversion with Decimal support
-export const convertAmount = async (
-    amount: number | Prisma.Decimal,
-    fromCurrency: string,
-    toCurrency: string
-) => {
-    // Handle both number and Decimal inputs
-    const numericAmount = typeof amount === 'number' ? amount : toNumberSafe(amount);
-    
-    // Use conversion utilities that handle Decimal types
-    return await convertCurrencyFromDB(numericAmount, fromCurrency, toCurrency);
-};
-
-// Arithmetic operations with Decimal types
-export const calculateBudgetVariance = (
-    budgetAmount: number | Prisma.Decimal,
-    actualSpent: number | Prisma.Decimal
-) => {
-    // Use utility functions for safe arithmetic
-    const variance = subtractDecimal(budgetAmount, actualSpent);
-    const percentageUsed = divideDecimal(actualSpent, budgetAmount) * 100;
-    
-    return {
-        variance,
-        percentageUsed,
-        isOverBudget: compareDecimal(actualSpent, budgetAmount) > 0
+export const asyncHandler = (fn: AsyncFunction) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+        Promise.resolve(fn(req, res, next)).catch(next);
     };
 };
 ```
 
-### **Pattern 5: Redis Caching (Resilient Wrapper)**
-All Redis operations use centralized safe wrappers from `src/utils/redis.ts` that catch errors internally:
+Every controller function is wrapped with `asyncHandler` — no manual try-catch blocks in controllers.
+
+### Error Middleware Stack (`src/middlewares/error.middleware.ts`)
+
+Four middleware functions registered at specific points in `src/index.ts`:
 
 ```typescript
-import { safeGet, safeSetex, withCache, safeDel } from '../utils/redis';
+// Early (before routes) — catches CORS errors on any request
+app.use(corsErrorHandler);
 
-// Cache-aside pattern using withCache helper (preferred for JSON data)
+// After all routes — error handling chain (order matters!)
+app.use('*', notFoundHandler);    // 404 for undefined routes
+app.use(validationErrorHandler);  // express-validator / Joi errors
+app.use(globalErrorHandler);      // Domain errors, Prisma errors, unexpected errors (must be last)
+```
+
+The `globalErrorHandler`:
+- Logs sanitized request body (sensitive fields like `password`, `token`, `apiKey` replaced with `[REDACTED]`)
+- Handles `isDomainError()` instances (`ValidationError`, `NotFoundError`) with structured responses
+- Includes `details` (field, validationType, prismaCode) in error response
+- In development: includes stack trace and userId in logs
+- In production: clean error messages, no PII in logs
+
+All error responses follow a consistent format:
+
+```typescript
+interface ErrorResponse {
+    error: string;       // Error type name
+    message: string;     // Human-readable message
+    statusCode: number;  // HTTP status code
+    resource?: string;   // Affected resource name
+    timestamp: string;   // ISO timestamp
+    details?: object;    // Additional context (field, validationType, etc.)
+}
+```
+
+### Decimal Type Handling
+
+Financial calculations use Prisma Decimal types with utility functions:
+
+```typescript
+import { toNumberSafe, addDecimal, subtractDecimal, compareDecimal } from '../utils/utils';
+
+const savedAmount = toNumberSafe(goal.savedAmount);
+const targetAmount = toNumberSafe(goal.targetAmount);
+const progress = Math.min(100, (savedAmount / targetAmount) * 100);
+```
+
+Rules:
+- Convert `Decimal` to `number` via `toNumberSafe()` before arithmetic
+- Use `addDecimal()`, `subtractDecimal()`, `multiplyDecimal()`, `divideDecimal()` for Decimal-to-Decimal ops
+- Use `compareDecimal()` for safe comparisons
+- Prisma handles number-to-Decimal conversion on writes
+
+### Redis Caching
+
+```typescript
+import { withCache, safeDel } from '../utils/redis';
+
+// Cache-aside pattern (preferred for JSON data)
 return withCache(`report:expense:${userId}:${startKey}:${endKey}`, 600, async () => {
-    // This only runs on cache miss — result is automatically cached as JSON
     const data = await prisma.transaction.findMany({ ... });
     return processedResult;
 });
 
-// Manual cache for non-JSON values (e.g., raw numbers, strings)
-const cached = await safeGet(`rate:${from}:${to}`);
-if (cached) {
-    const rate = parseFloat(cached);
-    if (!isNaN(rate)) return numValue * rate;
-}
-
-// Cache invalidation — always after successful DB write, never before
+// Cache invalidation after successful DB write
 const budget = await prisma.budget.create({ data: { ... } });
-await safeDel(`budget:performance:${userId}`);  // Only on success
+await safeDel(`budget:performance:${userId}`);
 return budget;
-
-// Atomic rate limiting with Lua script
-import { safeIncrWithTTL } from '../utils/redis';
-const count = await safeIncrWithTTL(key, windowSeconds); // null = Redis down, fail-open
 ```
 
-**Key rules**:
-- Use `withCache` for the common get-or-compute pattern — it handles JSON parse/stringify and corrupted cache data
+Rules:
+- Use `withCache` for the common get-or-compute pattern
 - Never import `redisClient` directly in services — always use safe wrappers
-- Redis is a performance optimization, not a dependency — DB is always the fallback
-- Only cache non-empty, validated data (e.g., skip caching empty AI responses)
-- **Invalidate after DB success, never before** — prevents stale cache on DB failure
+- Invalidate cache **after** DB success, never before
+- Only cache non-empty, validated data
 
-### **Pattern 5b: AI Assistant Tools (Google ADK)**
-AI tools use `FunctionTool` from `@google/adk` with Zod schemas and `withCache` for data retrieval:
+### AI Tools (Google ADK)
+
+Tools are defined in `src/ai/adk/tools/` using `FunctionTool` with Zod parameter schemas. They delegate to handler functions in `src/ai/controllers/`, which manage caching and call `src/ai/services/`.
+
+**Tool → Controller → Service** separation:
 
 ```typescript
-import { FunctionTool, Context } from "@google/adk";
-import { z } from "zod";
-import { withCache } from "../../../utils/redis";
+// src/ai/adk/tools/data_tools.ts
+function getUserId(ctx?: Context): string {
+    const userId = ctx?.state.get<string>("userId");
+    if (!userId) throw new Error("userId not found in session state");
+    return userId;
+}
 
 export const getTransactionsTool = new FunctionTool({
     name: "get_transactions",
     description: "Fetches the user's transactions with optional filters.",
     parameters: z.object({
         category: z.enum(CATEGORIES).optional(),
+        type: z.enum(TRANSACTION_TYPES).optional(),
         startDate: z.string().optional(),
+        endDate: z.string().optional(),
         limit: z.number().optional(),
     }),
     execute: async (input, ctx) => {
-        const userId = ctx?.state.get<string>("temp:userId")!;
-        return withCache(`adk:txn:${userId}:...`, 300, async () => {
-            const transactions = await prisma.transaction.findMany({ where: { userId }, ... });
-            return transactions.map(t => ({ ... }));
-        });
+        const userId = getUserId(ctx);
+        return await handleGetTransactions(userId, input);
     },
 });
 ```
 
-Action tools follow the same pattern but invalidate caches after writes:
-
 ```typescript
-export const createTransactionTool = new FunctionTool({
-    name: "create_transaction",
-    description: "Creates a transaction. ONLY call AFTER user confirms.",
-    parameters: z.object({ amount: z.number(), category: z.enum(CATEGORIES), ... }),
-    execute: async (input, ctx) => {
-        const userId = ctx?.state.get<string>("temp:userId")!;
-        const txn = await prisma.transaction.create({ data: { userId, ...input } });
-        await safeDel(`adk:txn:${userId}:all:all:50`);
-        return { status: "success", transactionId: txn.id };
-    },
-});
+// src/ai/controllers/transaction.controller.ts
+export async function handleGetTransactions(userId: string, input: { ... }) {
+    const cacheKeySuffix = `${input.category || "all"}:${input.type || "all"}:...`;
+    return withCache(`adk:txn:${userId}:${cacheKeySuffix}`, 300, async () => {
+        const transactions = await getTransactions(userId, { ... });
+        return transactions.map(t => ({ id: t.id, amount: toNumberSafe(t.amount), ... }));
+    });
+}
 ```
 
-### **Pattern 6: Error Handling**
-Consistent error handling across all services:
+Action tools follow the same delegation but invalidate caches after writes:
 
 ```typescript
-// For operations that might not find records
+// src/ai/controllers/transaction.controller.ts
+export async function handleCreateTransaction(userId: string, input: { ... }) {
+    const txn = await createTransaction(userId, { ... });
+    await safeDel(`adk:txn:${userId}:all:all::50`);
+    return { status: "success", transactionId: txn.id };
+}
+```
+
+The `userId` is injected into ADK session state when the session is created in `runner.ts`:
+
+```typescript
+state: { "userId": userId, "sessionId": sid }
+```
+
+### Error Handling
+
+```typescript
+// Not-found scenarios
 return withNotFoundHandling(async () => {
     return await prisma.resource.update({
         where: { id_userId: { id, userId } },
@@ -389,169 +261,54 @@ return withNotFoundHandling(async () => {
     });
 }, 'Resource');
 
-// For operations that create/read collections
+// Create/read operations
 return withPrismaErrorHandling(async () => {
-    return await prisma.resource.create({
-        data: createData
-    });
+    return await prisma.resource.create({ data: createData });
 }, 'Resource');
 
-// For business logic validation
-throw new ValidationError(
-    'Human-readable error message',
-    'ResourceName',
-    undefined,
-    { field: 'fieldName', validationType: 'business' }
-);
+// Business logic validation
+throw new ValidationError('Human-readable message', 'ResourceName', undefined,
+    { field: 'fieldName', validationType: 'business' });
 ```
 
-## 📁 File Organization Standards
+## Naming Conventions
 
-### **Directory Structure**
-```
-src/
-├── controllers/         # HTTP request handlers
-├── services/           # Business logic and database operations
-├── routes/             # API endpoint definitions
-├── middlewares/        # Request processing middleware
-├── types/              # TypeScript interfaces
-├── utils/              # Utility functions
-├── jobs/               # Background jobs
-└── scripts/            # Database seeding and maintenance
-```
+| Category | Convention | Example |
+|----------|-----------|---------|
+| Files | `snake_case.ts` | `bank_account.controller.ts` |
+| Functions | `camelCase` | `createGoal`, `getUserProfile` |
+| Interfaces | `PascalCase` | `CreateGoalInput`, `GoalUpdateData` |
+| Constants | `UPPER_SNAKE_CASE` | `JWT_SECRET` |
 
-### **Naming Conventions**
-- **Files**: `snake_case.ts` (e.g., `bank_account.controller.ts`)
-- **Functions**: `camelCase` (e.g., `createGoal`, `getUserProfile`)
-- **Interfaces**: `PascalCase` (e.g., `CreateGoalInput`, `GoalUpdateData`)
-- **Constants**: `UPPER_SNAKE_CASE` (e.g., `JWT_SECRET`)
+## Import Order
 
-### **Import Patterns**
 ```typescript
-// External libraries first
+// 1. External libraries
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 
-// Internal utilities
+// 2. Internal utilities
 import { asyncHandler } from '../utils/async_handler';
 import { AuthRequest } from '../middlewares/auth.middleware';
-import { safeGet, safeSetex, safeMget, safeBatchSetex } from '../utils/redis';
+import { withCache, safeDel } from '../utils/redis';
 
-// Types
+// 3. Types
 import { CreateGoalInput } from '../types/service_types';
 
-// Services
+// 4. Services
 import { createGoal as createGoalService } from '../services/goal.service';
 ```
 
-## 🚀 Implementation Benefits
+## Quality Checklist
 
-### **Type Safety**
-- All data flows through typed interfaces
-- Compile-time error detection
-- Enhanced IDE support and autocomplete
+When implementing new features:
 
-### **Consistency**
-- Predictable code structure across all modules
-- Uniform error handling and validation
-- Standardized response formats
-
-### **Maintainability**
-- Clear separation of concerns
-- Easy to locate and modify functionality
-- Consistent patterns reduce cognitive load
-
-### **Testability**
-- Services can be tested independently
-- Clear input/output contracts
-- Mocked dependencies are straightforward
-
-### **Scalability**
-- Modular architecture supports growth
-- Easy to add new endpoints following existing patterns
-- Reusable service functions
-
-## 🔢 Decimal Type Best Practices ✨ **NEW**
-
-### **Working with Financial Data**
-Always use proper Decimal handling for financial calculations:
-
-```typescript
-// ✅ GOOD: Use utility functions
-import { toNumberSafe, addDecimal, compareDecimal } from '../utils/utils';
-
-const totalAmount = addDecimal(amount1, amount2);
-const isPositive = compareDecimal(amount, 0) > 0;
-
-// ❌ BAD: Direct arithmetic operations
-const total = amount1 + amount2; // Type error with Decimal
-const isPositive = amount > 0;   // Type error with Decimal
-```
-
-### **Type Definitions for Decimal Fields**
-When defining service interfaces, specify both number and Decimal support:
-
-```typescript
-// ✅ GOOD: Support both types
-export interface CreateTransactionInput {
-    amount: number | Decimal;
-    currency: string;
-}
-
-// Currency conversion functions
-export async function convertCurrencyFromDB(
-    value: number | Decimal,  // Accept both types
-    from: string,
-    to: string
-): Promise<number> {  // Always return number for calculations
-    // Implementation handles both input types
-}
-```
-
-### **Database Operations with Decimal**
-When working with Prisma and Decimal fields:
-
-```typescript
-// ✅ GOOD: Convert Decimal to number for business logic
-const transaction = await prisma.transaction.findUnique({...});
-const amount = toNumberSafe(transaction.amount);
-
-// Perform calculations with numbers
-const fee = amount * 0.02;
-const total = amount + fee;
-
-// ✅ GOOD: Accept Decimal in service parameters
-export const updateTransactionAmount = async (
-    transactionId: string,
-    newAmount: number | Decimal
-) => {
-    return await prisma.transaction.update({
-        where: { id: transactionId },
-        data: { 
-            amount: newAmount  // Prisma handles conversion
-        }
-    });
-};
-```
-
-## ✅ Quality Checklist
-
-When implementing new features, ensure:
-
-- [ ] **Routes**: Follow GET → POST → PUT → DELETE ordering
-- [ ] **Controllers**: Include authorization check, create typed objects, delegate to services
-- [ ] **Services**: Use typed inputs, structured validation, error handling wrappers
-- [ ] **Types**: Define separate Create/Update interfaces
-- [ ] **Errors**: Use `ValidationError` for business logic, `withPrismaErrorHandling` for DB ops
-- [ ] **Decimal Types**: Use utility functions for arithmetic, accept both number and Decimal in services ✨ **NEW**
-- [ ] **Financial Calculations**: Convert Decimal to number for math operations, return numbers for business logic ✨ **NEW**
-- [ ] **Currency Conversion**: Use enhanced conversion functions that support Decimal inputs ✨ **NEW**
-- [ ] **Redis Caching**: Use `withCache` for JSON cache-aside; use `safeGet`/`safeSetex`/`safeMget`/`safeBatchSetex` for raw values — never import `redisClient` directly in services
-- [ ] **Cache Invalidation**: Always call `safeDel()` *after* a successful DB mutation, never before
-- [ ] **Cache Validation**: Only cache non-empty, validated data; treat Redis failures as cache misses
-- [ ] **Rate Limiting**: Use `safeIncrWithTTL()` for atomic increment + TTL — fail-open on Redis failure
-- [ ] **AI Tools**: Use `FunctionTool` with Zod schemas; wrap data reads in `withCache`; invalidate caches after writes with `safeDel`
-- [ ] **Naming**: Follow established conventions
-- [ ] **Imports**: Organize in standard order
-
-This guide ensures that all code follows the same high-quality patterns established throughout the Azerro backend codebase, including proper handling of the new Decimal types for financial precision.
+- [ ] Routes: GET → POST → PUT → DELETE ordering
+- [ ] Controllers: Auth check, typed input object, service delegation, proper status code
+- [ ] Services: Typed inputs, `ValidationError` for business rules, `withPrismaErrorHandling` for DB
+- [ ] Types: Separate `CreateInput` and `UpdateData` interfaces
+- [ ] Decimal: Use utility functions for arithmetic, accept both `number` and `Decimal`
+- [ ] Redis: Use `withCache` for reads; `safeDel` after writes; never import `redisClient` directly
+- [ ] AI Tools: `FunctionTool` + Zod schemas; wrap reads in `withCache`; invalidate after writes
+- [ ] Naming: Follow established conventions
+- [ ] Imports: Organize in standard order

@@ -1,15 +1,13 @@
 import { FunctionTool, Context } from "@google/adk";
-import { z } from "zod";
 import { runFriday, runJarvis } from "../runner";
+import { askFridaySchema, askJarvisSchema } from "../../validations/coordinator_tool.schema";
 
 export const askFridayTool = new FunctionTool({
   name: "ask_friday",
   description:
     "Delegates personal finance, transaction, budget, goal, planned event, or reporting queries to Friday. " +
     "Use this for any questions about spending, budgets, goals, bank accounts, or financial reports.",
-  parameters: z.object({
-    message: z.string().describe("The message or query to send to Friday"),
-  }),
+  parameters: askFridaySchema,
   execute: async (input, ctx) => {
     const userId = ctx?.state.get<string>("userId");
     const sessionId = ctx?.state.get<string>("sessionId");
@@ -27,9 +25,7 @@ export const askJarvisTool = new FunctionTool({
   description:
     "Delegates investment advice, stock/fund research, wishlist, favourites, or portfolio analysis queries to Jarvis. " +
     "Use this for any questions about stock/mutual fund analysis, investment preferences, wishlists, or portfolio holdings.",
-  parameters: z.object({
-    message: z.string().describe("The message or query to send to Jarvis"),
-  }),
+  parameters: askJarvisSchema,
   execute: async (input, ctx) => {
     const userId = ctx?.state.get<string>("userId");
     const sessionId = ctx?.state.get<string>("sessionId");

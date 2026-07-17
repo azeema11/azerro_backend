@@ -1,202 +1,191 @@
 # Azerro Backend
 
-Azerro is a modern, AI-powered personal finance and investment management platform. This repository contains the backend service, built with **Node.js**, **TypeScript**, **Express.js**, **Prisma (PostgreSQL)**, **Redis**, and the **Google Agent Development Kit (ADK)**.
-
-The backend acts as a unified engine that handles traditional financial tracking (transactions, budgets, goals, bank accounts, reports) alongside a sophisticated, SEBI-aligned multi-agent AI assistant that integrates with external brokers via the **Model Context Protocol (MCP)**.
+A personal finance and investment management platform powered by a multi-agent AI assistant. Built with **Node.js**, **TypeScript**, **Express.js**, **Prisma (PostgreSQL)**, **Redis**, and the **Google Agent Development Kit (ADK)**.
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-### 1. Core Personal Finance Engine
-* **Bank Accounts & Transactions**: Track accounts, balances, and categorize income/expenses.
-* **Budgets & Savings Goals**: Create category-specific budgets and track progress toward savings targets.
-* **Planned Financial Events**: Schedule and manage upcoming financial events (e.g., bills, subscriptions, planned income).
-* **Multi-Currency Financial Reports**: Generate budget vs. actual, income vs. expense, and category breakdowns with automatic real-time currency conversion.
+### Core Finance Engine
+- **Bank Accounts & Transactions** — Track accounts, balances, and categorize income/expenses across multiple currencies.
+- **Budgets & Savings Goals** — Create category-specific budgets and track progress toward savings targets with conflict detection.
+- **Planned Financial Events** — Schedule upcoming bills, subscriptions, and planned income with completion workflows.
+- **Multi-Currency Reports** — Budget vs. actual, income vs. expense, category breakdowns, asset allocation, recurring transaction detection — all with automatic currency conversion.
 
-### 2. Broker Integration (INDMoney)
-* **OAuth 2.1 with PKCE**: Secure, production-grade connection flow to INDMoney.
-* **Holdings Sync**: Automatically pulls row-level holdings (stocks, mutual funds, crypto, metals) from the broker and maps them to the local PostgreSQL database.
-* **PKCE State Expiry**: Secure, self-cleaning temporary PKCE state management to prevent token/session leaks.
+### Broker Integration (INDMoney)
+- **OAuth 2.1 with PKCE** — Secure connection flow with dynamic client registration (RFC 7591).
+- **Holdings Sync** — Pulls row-level holdings (stocks, mutual funds, crypto, metals) and maps them to the local database.
+- **Auto Token Refresh** — Seamless background sync with automatic credential renewal.
 
-### 3. AI-Powered Assistant (Google ADK)
-* **Multi-Agent Coordinator Architecture**:
-  * **Azerro (Main Coordinator)**: The primary conversational entry point. It analyzes user queries and delegates tasks to specialized sub-assistants.
-  * **Friday (Finance Specialist)**: Equipped with tools to analyze transactions, budgets, bank accounts, and generate reports.
-  * **Jarvis (Investment Advisor)**: Specialized in portfolio analysis, market research, and SEBI-aligned investment advice.
-* **Personalized Memory**: Stored user preferences (risk tolerance, sector preferences, maximum P/E, maximum PEG, wishlists, and favorites) are dynamically loaded to customize Jarvis's recommendations.
-* **Tool Calling & Action Proposals**: Secure write-action flow that proposes updates (e.g., "Create a transaction for $50") and executes them only after explicit user confirmation.
+### AI Assistant (Google ADK)
+- **Multi-Agent Coordinator** — Azerro (coordinator) delegates to Friday (finance) and Jarvis (investments).
+- **21 Tools** — 9 data tools (read-only), 6 action tools (write with confirmation), 2 coordinator tools, 2 market tools, 2 memory tools.
+- **Personalized Memory** — Stored preferences (risk tolerance, sector prefs, wishlists) customize recommendations.
+- **MCP Integration** — Real-time market data via INDMoney's MCP server.
 
-*For more detailed information about the AI Module, Agent Architecture, and ADK configuration, check out the dedicated [AI Module README](src/ai/README.md).*
-
-### 4. Model Context Protocol (MCP) Integration
-* Deep integration with the INDMoney MCP server to fetch real-time stock and mutual fund details, analyst consensus, target prices, and portfolio net-worth snapshots.
+See the dedicated [AI Module README](src/ai/README.md) for detailed architecture and tool documentation.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-* **Runtime & Language**: Node.js, TypeScript (ESM/CommonJS hybrid)
-* **Web Framework**: Express.js
-* **Database & ORM**: PostgreSQL, Prisma ORM
-* **Caching & Rate Limiting**: Redis, `ioredis`
-* **AI Framework**: Google ADK (Agent Development Kit), `@google/genai` (Gemini 2.5)
-* **Integration Protocols**: Model Context Protocol (MCP) SDK
-* **Testing**: Vitest, Supertest
-* **Process Management**: `ts-node-dev`, Docker Compose
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js, TypeScript |
+| Web Framework | Express.js |
+| Database | PostgreSQL, Prisma ORM |
+| Caching & Rate Limiting | Redis (ioredis) |
+| AI Framework | Google ADK, Gemini 2.5 |
+| Integration Protocols | Model Context Protocol (MCP) SDK |
+| Testing | Vitest, Supertest |
+| Process Management | ts-node-dev, Docker Compose |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-/
-├── .github/workflows/      # CI/CD deployment workflows
-├── mcps/                   # MCP server configurations and tool descriptors
-├── prisma/                 # Prisma schema and migrations
-│   └── schema.prisma       # Database schema definition
+├── prisma/                 # Schema and migrations
 ├── src/
-│   ├── ai/                 # AI Module (Google ADK) — [Detailed AI README](src/ai/README.md)
+│   ├── ai/                 # AI Module (Google ADK)
 │   │   ├── adk/
-│   │   │   ├── assistants/ # Coordinator, Finance, and Investment agents
-│   │   │   ├── tools/      # Tool definitions (data, action, market, memory)
-│   │   │   └── runner.ts   # Session management, execution loop, and persistence
-│   │   ├── controllers/    # HTTP handlers for AI endpoints
+│   │   │   ├── assistants/ # Azerro, Friday, Jarvis agents
+│   │   │   ├── tools/      # Tool definitions (data, action, market, memory, coordinator)
+│   │   │   ├── runner.ts   # Session management and execution loop
+│   │   │   └── model_config.ts
+│   │   ├── controllers/    # AI tool handlers with Redis caching
+│   │   ├── services/       # AI-specific services (MCP client, user memory, chat)
 │   │   ├── routes/         # AI routing
-│   │   └── services/       # AI-specific services (MCP client, user memory)
-│   ├── controllers/        # Core controllers (auth, transaction, holding, etc.)
-│   ├── jobs/               # Background cron jobs (holding refresh, currency rates)
-│   ├── middlewares/        # Express middlewares (auth, rate limiting, error handling)
+│   │   └── tests/          # Integration tests (fully mocked)
+│   ├── controllers/        # Core HTTP handlers
+│   ├── services/           # Business logic + broker integrations
 │   ├── routes/             # Core API routes
-│   ├── scripts/            # Database seeding, maintenance, and probe scripts
-│   ├── services/           # Core business logic (brokers, currency, reports)
+│   ├── jobs/               # Background cron jobs
+│   ├── middlewares/        # Auth, rate limiting, error handling
+│   ├── validations/        # Zod schemas
+│   ├── types/              # TypeScript interfaces
 │   ├── utils/              # Shared utilities (db, redis, currency, errors)
+│   ├── scripts/            # Seeding and maintenance
 │   └── index.ts            # Application entry point
-├── vitest.config.ts        # Testing configuration
-└── docker-compose_local.yml # Local Docker services (PostgreSQL, Redis)
+├── docker-compose.yml      # Production (Redis + pre-built backend image)
+└── docker-compose_local.yml # Local dev (Postgres + Redis + backend from source)
 ```
 
 ---
 
-## ⚙️ Environment Variables
+## Environment Variables
 
-Create a `.env` file in the root directory based on `.env.example`:
+Create a `.env` file based on `.env.example`:
 
 ```bash
 # Database & Redis
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public
 REDIS_URL=redis://redis_host:redis_port
 
-# Server Configuration
+# Server
 PORT=3000
-NODE_ENV="development"
-JWT_SECRET=your_jwt_secret_here
-API_BASE_URL=base_url
+NODE_ENV=development
+JWT_SECRET=your_jwt_secret
+API_BASE_URL=http://localhost:3000
 
-# AI Configuration
-AI_PROVIDER=your_ai_provider
-AI_MODEL=your_ai_model
-GEMINI_API_KEY=gemini_api_key
-OLLAMA_BASE_URL=your_ollama_base_url
+# AI
+AI_PROVIDER=gemini
+AI_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=your_gemini_api_key
 
-# INDMoney Broker Configuration
+# INDMoney Broker
 INDMONEY_AUTH_URL=https://mcp.indmoney.com/authorize
 INDMONEY_TOKEN_URL=https://mcp.indmoney.com/token
 INDMONEY_MCP_URL=https://mcp.indmoney.com/mcp
-INDMONEY_CLIENT_ID=your_indmoney_client_id_here
-INDMONEY_CLIENT_SECRET=your_indmoney_client_secret_here
+INDMONEY_CLIENT_ID=your_client_id
+INDMONEY_CLIENT_SECRET=your_client_secret
 ```
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-### 1. Start Local Infrastructure
-The easiest way to start PostgreSQL and Redis is using Docker Compose:
+### Start with Docker (recommended)
 ```bash
 npm run dev:with_docker
 ```
-This command starts the local Docker containers and launches the Express server in development mode with hot-reloading.
+Starts PostgreSQL and Redis containers, then launches the Express server with hot-reloading.
 
-Alternatively, if you already have PostgreSQL and Redis running locally:
+### Or with existing services
 ```bash
 npm run dev
 ```
 
-### 2. Database Setup & Seeding
-Generate the Prisma client and run database migrations:
+### Database setup
 ```bash
 npx prisma migrate dev
 npx prisma generate
+npm run seed          # Seed default currency rates
+npm run populate      # (Optional) Populate dummy data for testing
 ```
 
-Seed the database with default currency rates and baseline configurations:
+---
+
+## API Endpoints
+
+### Authentication (`/auth`)
+`POST /signup` · `POST /login`
+
+### User (`/user`)
+`GET /me` · `PUT /preferences`
+
+### Bank Accounts (`/bank-accounts`)
+`GET /` · `POST /` · `PUT /:id` · `DELETE /:id`
+
+### Transactions (`/transactions`)
+`GET /` · `POST /` · `PUT /:id` · `DELETE /:id`
+
+### Holdings (`/holdings`)
+`GET /` · `GET /history` · `POST /` · `PUT /:id` · `DELETE /:id`
+
+### Goals (`/goals`)
+`GET /` · `POST /` · `GET /:id` · `PUT /:id` · `DELETE /:id` · `POST /:id/contribute` · `GET /conflicts`
+
+### Budgets (`/budgets`)
+`GET /` · `GET /performance` · `POST /` · `PUT /:id` · `DELETE /:id`
+
+### Planned Events (`/planned-events`)
+`GET /` · `POST /` · `PUT /:id` · `DELETE /:id` · `PUT /complete/:id` · `PUT /reset/:id`
+
+### Reports (`/reports`)
+`GET /expenses-summary` · `GET /monthly-income-expense` · `GET /income-vs-expense` · `GET /category-breakdown` · `GET /asset-allocation` · `GET /budget-vs-actual` · `GET /goal-progress` · `GET /recurring-transactions`
+
+### Brokers (`/brokers`)
+`POST /:broker/connect` · `GET /indmoney/callback` · `GET /:broker/status` · `POST /:broker/sync` · `POST /:broker/disconnect` · `GET /:broker/search` · `GET /:broker/instrument/:symbol` · `GET /memory/all` · `POST /memory/save` · `DELETE /memory/:category/:key`
+
+### AI (`/ai`)
+`POST /assistant` — Unified conversational endpoint (rate-limited, authenticated)
+
+---
+
+## Background Jobs
+
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| Currency Rate Refresh | Every 6 hours | Updates exchange rates from fxratesapi.com |
+| Holdings Price Refresh | Every 6 hours | Updates stock/crypto/metal prices |
+| Database Maintenance | Monthly (1st, 2AM UTC) | VACUUM, REINDEX, ANALYZE |
+
+---
+
+## Testing
+
+All tests run fully mocked — no database, Redis, or LLM calls required.
+
 ```bash
-npm run seed
+npm run test           # All tests
+npm run test:ai        # AI module tests
+npm run test:main      # Core backend tests
+npm run test:coverage  # With coverage report
 ```
 
-(Optional) Populate dummy transactions, bank accounts, and budgets for testing:
-```bash
-npm run populate
-```
-
 ---
 
-## 📡 API Endpoints
+## License
 
-### Core Routes
-* **Authentication (`/auth`)**: `POST /register`, `POST /login`, `POST /logout` (Rate-limited)
-* **User Profile (`/user`)**: `GET /profile`, `PUT /profile`
-* **Bank Accounts (`/bank-accounts`)**: `GET /`, `POST /`, `DELETE /:id`
-* **Transactions (`/transactions`)**: `GET /`, `POST /`, `PUT /:id`, `DELETE /:id`
-* **Savings Goals (`/goals`)**: `GET /`, `POST /`, `PUT /:id`
-* **Budgets (`/budgets`)**: `GET /`, `POST /`
-* **Planned Events (`/planned-events`)**: `GET /`, `POST /`, `PUT /:id`
-* **Reports (`/reports`)**: `GET /budget-vs-actual`, `GET /income-vs-expense`, `GET /category-breakdown`
-
-### Broker & AI Routes
-* **Broker Connection (`/brokers`)**:
-  * `POST /indmoney/connect` — Initiates OAuth 2.1 PKCE flow or connects with a direct token.
-  * `GET /indmoney/callback` — Handles OAuth callback and exchanges code for tokens.
-  * `POST /indmoney/sync` — Manually triggers a portfolio holdings sync.
-  * `GET /indmoney/status` — Checks broker connection status.
-* **AI Assistant (`/ai`)**:
-  * `POST /assistant` — Unified conversational endpoint. Send financial queries or commands to Azerro. (Rate-limited, requires authentication).
-
----
-
-## 🕒 Background Jobs
-
-The backend runs several scheduled background tasks (using `node-cron`):
-1. **Holding Refresh Job**: Periodically syncs real-time holdings from connected brokers for all active users.
-2. **Currency Rate Refresh Job**: Periodically fetches and updates multi-currency exchange rates.
-3. **Database Maintenance Job**: Runs lightweight database optimizations (vacuum, reindexing) to ensure peak performance.
-
----
-
-## 🧪 Running Tests
-
-We use **Vitest** for unit and integration testing.
-
-* **Run all tests**:
-  ```bash
-  npm run test
-  ```
-* **Run AI module tests**:
-  ```bash
-  npm run test:ai
-  ```
-* **Run core backend tests**:
-  ```bash
-  npm run test:main
-  ```
-* **Run with coverage**:
-  ```bash
-  npm run test:coverage
-  ```
-
----
-
-## 📄 License
-
-This project is licensed under the **ISC License** - see the [LICENSE](LICENSE) file for details.
+ISC

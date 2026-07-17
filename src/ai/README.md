@@ -1,54 +1,70 @@
 # AI Module
 
-This module provides an AI-powered unified finance assistant built on **Google ADK (Agent Development Kit)**. The assistant handles all financial queries, analysis, and actions through a single conversational endpoint.
+AI-powered finance assistant built on **Google ADK (Agent Development Kit)**. Provides a unified conversational endpoint that handles financial queries, analysis, and actions through a multi-agent coordinator architecture.
 
 ## Architecture
 
-The module uses a **Multi-Agent Coordinator Architecture** built on top of Google ADK. Instead of a single monolithic assistant, we have a hierarchical system where a main coordinator delegates specialized tasks to dedicated sub-assistants:
+A hierarchical system where a main coordinator delegates specialized tasks to dedicated sub-assistants:
 
-1. **Azerro (Main Coordinator)**: The primary entry point for all user requests. It analyzes the user's message and decides whether to delegate to **Friday** (for general finance) or **Jarvis** (for personalized investment advice).
-2. **Friday (Finance Specialist)**: Equipped with tools to analyze transactions, budgets, bank accounts, and generate financial reports.
-3. **Jarvis (Investment Advisor)**: Equipped with tools to analyze holdings, search market instruments, fetch live stock/fund details, and personalize advice based on user-configurable memory preferences.
+1. **Azerro (Coordinator)** — Analyzes user messages and routes to Friday or Jarvis.
+2. **Friday (Finance Specialist)** — Transactions, budgets, bank accounts, reports, goals, planned events.
+3. **Jarvis (Investment Advisor)** — Holdings analysis, market research, advice, personalized via user memory.
+
+```
+User → POST /ai/assistant → runAssistant()
+  → InMemoryRunner (Azerro)
+    → ask_friday → InMemoryRunner (Friday)
+    → ask_jarvis → InMemoryRunner (Jarvis)
+  → persistChatHistory() → PostgreSQL
+```
+
+
+
+## File Structure
 
 ```
 src/ai/
 ├── adk/
 │   ├── assistants/
-│   │   ├── azerro.assistant.ts    # Main Coordinator Agent
-│   │   ├── finance.assistant.ts   # Friday (Finance Specialist)
-│   │   └── investment.assistant.ts # Jarvis (Investment Advisor)
+│   │   ├── azerro.assistant.ts      # Coordinator agent
+│   │   ├── finance.assistant.ts     # Friday
+│   │   └── investment.assistant.ts  # Jarvis
 │   ├── tools/
-│   │   ├── coordinator_tools.ts   # Tools for Azerro to delegate (ask_friday, ask_jarvis)
-│   │   ├── data_tools.ts          # Read-only tools (transactions, goals, budgets, events, profile, reports)
-│   │   ├── action_tools.ts        # Write tools (create transaction/goal/budget/planned event, update goal)
-│   │   ├── market_tools.ts        # Market data tools (search_market_instrument, get_market_instrument_details)
-│   │   └── memory_tools.ts        # Personal preference memory tools (get_user_memory, save_user_memory)
-│   ├── runner.ts                  # Session management, execution loop, and chat persistence
-│   └── model_config.ts            # LLM provider configuration (Gemini / Ollama)
-├── controllers/
-│   └── assistant.controller.ts    # HTTP handler for POST /ai/assistant
-├── routes/
-│   └── ai.route.ts                # Route definition
-└── tests/
-    └── integration/
-        └── assistant.route.test.ts
+│   │   ├── coordinator_tools.ts     # ask_friday, ask_jarvis
+│   │   ├── data_tools.ts           # Read-only tools
+│   │   ├── action_tools.ts         # Write tools (require confirmation)
+│   │   ├── market_tools.ts         # INDMoney MCP integration
+│   │   └── memory_tools.ts         # User preference storage
+│   ├── runner.ts                    # Session management, execution loop, persistence
+│   └── model_config.ts             # LLM provider configuration
+├── controllers/                     # Tool handlers with Redis caching
+├── services/                        # AI-specific services (MCP client, chat, user memory)
+├── routes/ai.route.ts              # Route definition
+└── tests/integration/              # Fully mocked integration tests
 ```
+
+
 
 ## Endpoint
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ai/assistant` | POST | Unified finance assistant — handles all financial queries and actions |
+
+| Method | Path            | Description                     |
+| ------ | --------------- | ------------------------------- |
+| POST   | `/ai/assistant` | Unified conversational endpoint |
+
+
+
 
 ### Request
 
 ```json
-POST /ai/assistant
 {
     "message": "How much did I spend on groceries last month?",
     "sessionId": "optional-session-id"
 }
 ```
+
+
 
 ### Response
 
@@ -63,7 +79,7 @@ POST /ai/assistant
 }
 ```
 
-When the assistant executes a write action (after user confirmation), the `actions` array contains details:
+When a write action executes (after user confirmation):
 
 ```json
 {
@@ -77,121 +93,136 @@ When the assistant executes a write action (after user confirmation), the `actio
 }
 ```
 
-## Capabilities
 
-### 1. Coordinator Tools (Azerro-only)
 
-| Tool | Description |
-|------|-------------|
-| `ask_friday` | Delegate general personal finance queries (transactions, budgets, bills, reports) to Friday |
-| `ask_jarvis` | Delegate investment advice, portfolio analysis, and preference management queries to Jarvis |
+## Tools
 
-### 2. Data Tools (read-only)
 
-| Tool | Description |
-|------|-------------|
-| `get_transactions` | Fetch transactions with filters (category, type, date range, limit) |
-| `get_goals` | Fetch savings goals (active or all) |
-| `get_budgets` | Fetch budgets by category |
-| `get_planned_events` | Fetch planned financial events |
-| `get_user_profile` | Fetch user's name, base currency, monthly income |
-| `get_report` | Generate reports with multi-currency conversion (budget vs actual, income vs expense, category breakdown) |
-| `get_holdings` | Fetch user's investment holdings (stocks, crypto, metals) |
-| `get_bank_accounts` | Fetch user's bank accounts and balances |
-| `get_networth_snapshot` | Fetch user's overall net worth snapshot across all assets and liabilities from INDMoney MCP |
-| `get_networth_holdings` | Fetch row-level holdings for a specific asset type (IND_STOCK, MF, US_STOCK, CRYPTO, etc.) from INDMoney MCP |
 
-### 3. Action Tools (write, require user confirmation)
+### Coordinator Tools (Azerro only)
 
-| Tool | Description |
-|------|-------------|
-| `create_transaction` | Create a new income/expense transaction |
-| `create_goal` | Create a new savings goal |
-| `update_goal` | Update a goal's target amount, date, saved progress, or completion status |
-| `create_budget` | Create or update a budget for a category/period |
-| `create_planned_event` | Create a new planned financial event |
-| `update_planned_event` | Update a planned financial event's name, estimated cost, target date, saved progress, or completion status |
 
-### 4. Market Data Tools (Jarvis-only)
+| Tool         | Description                           |
+| ------------ | ------------------------------------- |
+| `ask_friday` | Delegate finance queries to Friday    |
+| `ask_jarvis` | Delegate investment queries to Jarvis |
 
-| Tool | Description |
-|------|-------------|
-| `search_market_instrument` | Search for a stock or mutual fund by name/symbol to find its ticker using INDMoney's `lookup_ind_keys` tool |
-| `get_market_instrument_details` | Fetch live price, valuation metrics (P/E, PEG), analyst consensus, target prices, and news using INDMoney's `get_indian_stocks_details` or `get_us_stocks_details` tools |
 
-### 5. Memory & Preference Tools (Jarvis-only)
 
-| Tool | Description |
-|------|-------------|
-| `get_user_memory` | Retrieve stored user preferences, risk profiles, or wishlists/favourites |
-| `save_user_memory` | Save or update a personal preference, risk profile, or wishlist/favourites memory |
 
-### Action Proposal Flow
+### Data Tools (read-only)
 
-Write actions follow a confirmation pattern:
+
+| Tool                   | Description                                                         |
+| ---------------------- | ------------------------------------------------------------------- |
+| `get_transactions`     | Fetch transactions with filters (category, type, date range, limit) |
+| `get_goals`            | Fetch savings goals (active or all)                                 |
+| `get_budgets`          | Fetch budgets by category                                           |
+| `get_planned_events`   | Fetch planned financial events                                      |
+| `get_user_profile`     | Fetch user's name, base currency, monthly income                    |
+| `get_report`           | Generate reports with multi-currency conversion                     |
+| `get_holdings`         | Fetch investment holdings                                           |
+| `get_holdings_history` | Fetch historical holding value changes                              |
+| `get_bank_accounts`    | Fetch bank accounts and balances                                    |
+
+
+
+
+### Action Tools (write, require user confirmation)
+
+
+| Tool                   | Description                                           |
+| ---------------------- | ----------------------------------------------------- |
+| `create_transaction`   | Create a new income/expense transaction               |
+| `create_goal`          | Create a new savings goal                             |
+| `update_goal`          | Update a goal's target, date, progress, or completion |
+| `create_budget`        | Create or update a budget                             |
+| `create_planned_event` | Create a planned financial event                      |
+| `update_planned_event` | Update a planned event                                |
+
+
+
+
+### Market Tools (Jarvis only, via INDMoney MCP)
+
+
+| Tool                            | Description                                   |
+| ------------------------------- | --------------------------------------------- |
+| `search_market_instrument`      | Search stocks/funds by name or symbol         |
+| `get_market_instrument_details` | Live price, P/E, PEG, analyst consensus, news |
+
+
+
+
+### Memory Tools (Jarvis only)
+
+
+| Tool               | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `get_user_memory`  | Retrieve stored preferences, risk profiles, wishlists |
+| `save_user_memory` | Save or update a preference or wishlist               |
+
+
+
+
+## Action Proposal Flow
+
 1. User asks to create/update something
 2. Assistant proposes the action with specific values
-3. User confirms ("yes", "go ahead")
+3. User confirms
 4. Assistant executes the tool and reports the result
 
-The assistant **never** executes a write action without explicit user confirmation.
+Write actions are never executed without explicit user confirmation.
 
-## AI Provider Configuration
+## Provider Configuration
 
-The module supports two AI providers via environment variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AI_PROVIDER` | `gemini` or `ollama` | `gemini` |
-| `AI_MODEL` | Model name | `gemini-2.5-flash` (Gemini) / `llama3.1:8b` (Ollama) |
-| `GEMINI_API_KEY` | Google Gemini API key | Required for Gemini |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
+| Variable         | Description           | Default                            |
+| ---------------- | --------------------- | ---------------------------------- |
+| `AI_PROVIDER`    | `gemini` or `ollama`  | `gemini`                           |
+| `AI_MODEL`       | Model name            | `gemini-2.5-flash` / `llama3.1:8b` |
+| `GEMINI_API_KEY` | Google Gemini API key | Required for Gemini                |
 
-> **Note:** Phase 1 only supports Gemini. Ollama support is prepared in `model_config.ts` but not yet wired.
+
+Ollama support is prepared in `model_config.ts` but not yet wired.
 
 ## Session Persistence
 
-- Conversations are stored in the `ChatMessage` table with `intent: "assistant"` and a `sessionId`
-- On server restart, recent chat history is loaded from PostgreSQL into the ADK in-memory session
-- The `sessionId` field groups messages within a conversation session
-- Tool calls and executed actions are stored as JSON metadata on AI messages
+- Conversations stored in `ChatMessage` table with `sessionId` grouping
+- On server restart, recent history (last 20 messages) is loaded from PostgreSQL into the ADK in-memory session
+- Tool calls and executed actions stored as JSON metadata
+
+
 
 ## Response Caching
 
-Data tools use Redis caching via `withCache()` from `src/utils/redis.ts`:
+Data tools use Redis caching via `withCache()`:
 
-| Tool | Cache Key Pattern | TTL |
-|------|-------------------|-----|
-| `get_transactions` | `adk:txn:{userId}:...` | 5 min |
-| `get_goals` | `adk:goals:{userId}:...` | 3 min |
-| `get_budgets` | `adk:budgets:{userId}:...` | 3 min |
-| `get_planned_events` | `adk:events:{userId}:...` | 3 min |
-| `get_user_profile` | `adk:profile:{userId}` | 10 min |
-| `get_report` | Delegated to `report.service.ts` caching | 10 min |
+
+| Tool                 | Cache Key Pattern           | TTL    |
+| -------------------- | --------------------------- | ------ |
+| `get_transactions`   | `adk:txn:{userId}:...`      | 5 min  |
+| `get_goals`          | `adk:goals:{userId}:...`    | 3 min  |
+| `get_budgets`        | `adk:budgets:{userId}:...`  | 3 min  |
+| `get_planned_events` | `adk:events:{userId}:...`   | 3 min  |
+| `get_user_profile`   | `adk:profile:{userId}`      | 10 min |
+| `get_report`         | Delegated to report service | 10 min |
+
 
 Action tools invalidate related caches after successful writes.
 
 ## Rate Limiting
 
-AI endpoints are protected by the rate-limit middleware:
 - 30 requests per 60-second window
-- Uses atomic `safeIncrWithTTL()` (Redis Lua script)
+- Atomic Redis counter via `safeIncrWithTTL()` (Lua script)
 - Fails open when Redis is unavailable
 
-## Integration Points
 
-- **Route registration**: `src/index.ts` mounts `src/ai/routes/ai.route.ts` under `/ai`
-- **Auth**: All routes protected by `authMiddleware` — `userId` injected via JWT
-- **Database**: Uses Prisma directly for data access (shared database pattern)
-- **Reports**: `get_report` tool delegates to `src/services/report.service.ts` for multi-currency report generation
 
 ## Dependencies
 
-- `@google/adk` — Google Agent Development Kit (LlmAgent, FunctionTool, InMemoryRunner)
+- `@google/adk` — LlmAgent, FunctionTool, InMemoryRunner
 - `@google/genai` — Content helpers (createUserContent, createModelContent)
 - `zod` — Tool parameter schemas
-- `@prisma/client` — Database access and enum types
+- `@modelcontextprotocol/sdk` — MCP client for INDMoney market data
 
-## Future Extensions
-
-The `src/ai/adk/assistants/` folder is structured for multiple assistants. Future assistants (e.g. `tax.assistant.ts`) can be added alongside `finance.assistant.ts` and `investment.assistant.ts` and wired to separate or shared endpoints.

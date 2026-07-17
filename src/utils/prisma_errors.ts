@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { z, ZodError } from 'zod';
 
 /**
  * HTTP-aware domain error with status code and semantic information
@@ -49,7 +50,7 @@ export class NotFoundError extends DomainError {
 export class ValidationError extends DomainError {
     public readonly field?: string;
     public readonly validationType?: 'schema' | 'business' | 'database';
-    public readonly zodIssues?: any[]; // Zod issues if applicable
+    public readonly zodIssues?: z.core.$ZodIssue[]; // Zod issues if applicable
 
     constructor(
         message: string,
@@ -58,7 +59,7 @@ export class ValidationError extends DomainError {
         options?: {
             field?: string;
             validationType?: 'schema' | 'business' | 'database';
-            zodIssues?: any[];
+            zodIssues?: z.core.$ZodIssue[];
         }
     ) {
         super(message, 400, resource, cause);
@@ -210,7 +211,7 @@ export function getHttpStatusCode(error: unknown): number {
  * Convert Zod error to ValidationError
  * Maps Zod validation failures to our domain error system
  */
-export function fromZodError(zodError: any, resource: string): ValidationError {
+export function fromZodError(zodError: ZodError, resource: string): ValidationError {
     const issues = zodError.issues || [];
     const firstIssue = issues[0];
 
@@ -235,14 +236,14 @@ export function fromZodError(zodError: any, resource: string): ValidationError {
  * Safe validation wrapper that converts Zod errors to ValidationError
  */
 export function validateWithZod<T>(
-    schema: any, // z.ZodSchema<T>
+    schema: z.ZodSchema<T>,
     data: unknown,
     resource: string
 ): T {
     try {
         return schema.parse(data);
-    } catch (error: any) {
-        if (error?.name === 'ZodError') {
+    } catch (error: unknown) {
+        if (error instanceof ZodError) {
             throw fromZodError(error, resource);
         }
         throw error;

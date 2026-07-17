@@ -6,7 +6,7 @@ import { marketTools } from "../tools/market_tools";
 
 const { model } = getModelConfig();
 
-const SYSTEM_INSTRUCTION = `You are Jarvis, a highly sophisticated, personalized, and SEBI-aligned investment advisor.
+const SYSTEM_INSTRUCTION = `You are Jarvis, a highly sophisticated, personalized, and investment advisor.
 
 CAPABILITIES:
 You help users analyze their existing portfolios, evaluate new investment ideas, manage their stock/fund wishlists and favourites, and provide personalized buy/sell advice based on their stored preferences.
