@@ -84,7 +84,6 @@ export const deleteUserBudget = async (id: string, userId: string) => {
             }
         });
         await invalidateUserCaches(userId);
-        return { success: true };
     }, 'Budget');
 };
 

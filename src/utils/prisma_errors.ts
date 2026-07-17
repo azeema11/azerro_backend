@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { z, ZodError } from 'zod';
+import { z } from 'zod';
 
 /**
  * HTTP-aware domain error with status code and semantic information
@@ -67,21 +67,6 @@ export class ValidationError extends DomainError {
         this.field = options?.field;
         this.validationType = options?.validationType || 'business';
         this.zodIssues = options?.zodIssues;
-    }
-}
-
-/**
- * Specialized error for authorization failures
- */
-export class ForbiddenError extends DomainError {
-    constructor(resource: string, cause?: Error) {
-        super(
-            `Access denied to ${resource}`,
-            403,
-            resource,
-            cause
-        );
-        this.name = 'ForbiddenError';
     }
 }
 
@@ -205,47 +190,4 @@ export function getHttpStatusCode(error: unknown): number {
         return error.statusCode;
     }
     return 500; // Internal Server Error for unknown errors
-}
-
-/**
- * Convert Zod error to ValidationError
- * Maps Zod validation failures to our domain error system
- */
-export function fromZodError(zodError: ZodError, resource: string): ValidationError {
-    const issues = zodError.issues || [];
-    const firstIssue = issues[0];
-
-    // Create user-friendly message
-    const message = firstIssue
-        ? `${firstIssue.path.join('.')} ${firstIssue.message}`.toLowerCase()
-        : 'Invalid input data';
-
-    return new ValidationError(
-        message,
-        resource,
-        zodError,
-        {
-            field: firstIssue?.path.join('.'),
-            validationType: 'schema',
-            zodIssues: issues
-        }
-    );
-}
-
-/**
- * Safe validation wrapper that converts Zod errors to ValidationError
- */
-export function validateWithZod<T>(
-    schema: z.ZodSchema<T>,
-    data: unknown,
-    resource: string
-): T {
-    try {
-        return schema.parse(data);
-    } catch (error: unknown) {
-        if (error instanceof ZodError) {
-            throw fromZodError(error, resource);
-        }
-        throw error;
-    }
 }

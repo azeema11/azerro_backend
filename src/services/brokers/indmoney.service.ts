@@ -1,5 +1,3 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { IBrokerService } from "./types";
 import prisma from "../../utils/db";
 import { AssetType } from "@prisma/client";
@@ -7,6 +5,7 @@ import { convertCurrencyFromDB } from "../../utils/currency";
 import { DomainError } from "../../utils/prisma_errors";
 import crypto from "crypto";
 import { safeGet, safeSetex } from "../../utils/redis";
+import { createIndmoneyMcpClient, parseMcpToolJson } from "./mcp_client";
 
 /**
  * Helper to cache INDMoney access token in Redis with a 5-minute buffer.
@@ -18,8 +17,6 @@ export async function cacheAccessToken(userId: string, accessToken: string, expi
     await safeSetex(`indmoney:token:${userId}`, ttlSeconds, accessToken);
   }
 }
-
-const mcpUrl = process.env.INDMONEY_MCP_URL || "https://mcp.indmoney.com/mcp";
 
 const INDMONEY_AUTH_URL = process.env.INDMONEY_AUTH_URL;
 const INDMONEY_TOKEN_URL = process.env.INDMONEY_TOKEN_URL;
@@ -103,13 +100,9 @@ async function connect(userId: string, data?: any) {
     }
 
     if (!isMock) {
-      // Validate the real token against INDMoney before writing userMemory or returning connected
-      const client = new Client({ name: "indmoney-validator", version: "1.0.0" }, { capabilities: {} });
+      let client: Awaited<ReturnType<typeof createIndmoneyMcpClient>> | undefined;
       try {
-        const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-          requestInit: { headers: { Authorization: `Bearer ${token}` } },
-        });
-        await client.connect(transport);
+        client = await createIndmoneyMcpClient(token, "indmoney-validator");
         await client.listTools();
       } catch (error: any) {
         throw new DomainError(
@@ -118,7 +111,7 @@ async function connect(userId: string, data?: any) {
           "BrokerConnection"
         );
       } finally {
-        await client.close().catch(() => { });
+        await client?.close().catch(() => { });
       }
     }
 
@@ -186,11 +179,14 @@ async function connect(userId: string, data?: any) {
         key: { startsWith: "pkce_" },
       },
     });
-    for (const record of oldPkceRecords) {
-      const val = record.value as any;
-      if (val && val.expiresAt && new Date(val.expiresAt) < new Date()) {
-        await prisma.userMemory.delete({ where: { id: record.id } }).catch(() => { });
-      }
+    const expiredIds = oldPkceRecords
+      .filter(r => {
+        const val = r.value as any;
+        return val && val.expiresAt && new Date(val.expiresAt) < new Date();
+      })
+      .map(r => r.id);
+    if (expiredIds.length > 0) {
+      await prisma.userMemory.deleteMany({ where: { id: { in: expiredIds } } }).catch(() => { });
     }
   } catch (err) {
     console.error("Failed to cleanup expired PKCE states:", err);
@@ -585,23 +581,9 @@ async function syncHoldings(userId: string) {
     // Get a valid access token (automatically refreshed if needed)
     const token = await getAccessToken(userId);
 
+    let client: Awaited<ReturnType<typeof createIndmoneyMcpClient>> | undefined;
     try {
-      const client = new Client({
-        name: "azerro-client",
-        version: "1.0.0",
-      }, {
-        capabilities: {},
-      });
-
-      const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-        requestInit: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      });
-
-      await client.connect(transport);
+      client = await createIndmoneyMcpClient(token);
 
       const { tools } = await client.listTools();
 
@@ -609,32 +591,29 @@ async function syncHoldings(userId: string) {
         .map((tool) => (tool.inputSchema?.properties as Record<string, any>)?.asset_type)
         .map((assetType: any) => assetType?.enum).flat();
 
-      for (const assetType of assetTypes) {
-        try {
-          const response = await client.callTool({
-            name: "networth_holdings",
-            arguments: { asset_type: assetType },
-          });
+      const results = await Promise.allSettled(
+        assetTypes.map(assetType =>
+          client!.callTool({ name: "networth_holdings", arguments: { asset_type: assetType } })
+            .then(response => ({ assetType, response }))
+        )
+      );
 
-          if (response && Array.isArray((response as any).content)) {
-            const contentText = (response as any).content[0]?.text;
-            if (contentText) {
-              const parsed = JSON.parse(contentText);
-              const holdings = parsed.holdings || [];
-              for (const h of holdings) {
-                rawHoldings.push({
-                  ...h,
-                  _assetTypeContext: assetType,
-                });
-              }
-            }
-          }
-        } catch (err: any) {
-          console.error(`Failed to fetch holdings for asset type ${assetType}:`, err.message || err);
-        }
+      const failures = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
+      if (failures.length > 0) {
+        const reasons = failures.map(f => f.reason?.message || f.reason).join('; ');
+        throw new Error(`Failed to fetch holdings for ${failures.length} asset type(s): ${reasons}`);
       }
 
-      await client.close();
+      for (const result of results) {
+        const { assetType, response } = (result as PromiseFulfilledResult<{ assetType: string; response: any }>).value;
+        const parsed = parseMcpToolJson<{ holdings?: any[] }>(response);
+        if (parsed) {
+          const holdings = parsed.holdings || [];
+          for (const h of holdings) {
+            rawHoldings.push({ ...h, _assetTypeContext: assetType });
+          }
+        }
+      }
     } catch (error: any) {
       console.error("Failed to fetch real INDMoney holdings via MCP:", error.message || error);
 
@@ -677,6 +656,8 @@ async function syncHoldings(userId: string) {
       }
 
       throw new Error(`INDMoney sync failed: ${error.message || error}`);
+    } finally {
+      await client?.close().catch(() => { });
     }
   }
 
@@ -833,40 +814,42 @@ async function syncHoldings(userId: string) {
     }
 
     // 2. Upsert currently active holdings
-    for (const data of upsertDataListFinal) {
-      const holding = await tx.holding.upsert({
-        where: {
-          id_userId: {
+    const upsertedHoldings = await Promise.all(
+      upsertDataListFinal.map(data =>
+        tx.holding.upsert({
+          where: {
+            id_userId: {
+              id: `${userId}_indmoney_${data.ticker}`,
+              userId,
+            },
+          },
+          update: {
+            quantity: data.quantity,
+            avgCost: data.finalAvgCost,
+            holdingCurrency: data.holdingCurrency,
+            lastPrice: data.finalLastPrice,
+            convertedValue: data.convertedValue,
+            name: data.name,
+            assetType: data.assetType,
+            platform: "INDMoney",
+          },
+          create: {
             id: `${userId}_indmoney_${data.ticker}`,
             userId,
+            platform: "INDMoney",
+            ticker: data.ticker,
+            assetType: data.assetType,
+            name: data.name,
+            quantity: data.quantity,
+            avgCost: data.finalAvgCost,
+            holdingCurrency: data.holdingCurrency,
+            lastPrice: data.finalLastPrice,
+            convertedValue: data.convertedValue,
           },
-        },
-        update: {
-          quantity: data.quantity,
-          avgCost: data.finalAvgCost,
-          holdingCurrency: data.holdingCurrency,
-          lastPrice: data.finalLastPrice,
-          convertedValue: data.convertedValue,
-          name: data.name,
-          assetType: data.assetType,
-          platform: "INDMoney",
-        },
-        create: {
-          id: `${userId}_indmoney_${data.ticker}`,
-          userId,
-          platform: "INDMoney",
-          ticker: data.ticker,
-          assetType: data.assetType,
-          name: data.name,
-          quantity: data.quantity,
-          avgCost: data.finalAvgCost,
-          holdingCurrency: data.holdingCurrency,
-          lastPrice: data.finalLastPrice,
-          convertedValue: data.convertedValue,
-        },
-      });
-      syncedHoldings.push(holding);
-    }
+        })
+      )
+    );
+    syncedHoldings.push(...upsertedHoldings);
 
     // 3. Record snapshots of active holdings in HoldingHistory
     if (syncedHoldings.length > 0) {

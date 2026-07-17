@@ -46,8 +46,8 @@ export const deleteBudget = asyncHandler(async (req: AuthRequest, res: Response)
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const result = await deleteUserBudget(req.params.id, req.userId);
-    res.status(200).json(result);
+    await deleteUserBudget(req.params.id, req.userId);
+    res.status(204).send();
 });
 
 export const getBudgetPerformance = asyncHandler(async (req: AuthRequest, res: Response) => {

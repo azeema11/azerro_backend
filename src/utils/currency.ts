@@ -2,6 +2,8 @@ import { Decimal } from "@prisma/client/runtime";
 import prisma from "./db";
 import { safeGet, safeMget, safeSetex } from "./redis";
 import { getHistoricalExchangeRate } from "../services/currency_rates.service";
+import { getSecondsUntilMidnight, startOfUtcDay, formatDateKey } from "./date";
+import { toNumberSafe } from "./utils";
 
 /**
  * Get current exchange rate with USD-based derivation and caching
@@ -27,7 +29,7 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
     if (!record) {
       throw new Error(`Missing current exchange rate from USD to ${to}. Ensure currency rates are properly initialized.`);
     }
-    rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+    rate = toNumberSafe(record.rate);
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new Error(`Invalid exchange rate of ${rate} from USD to ${to}.`);
     }
@@ -40,7 +42,7 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
     if (!record) {
       throw new Error(`Missing current exchange rate from USD to ${from}. Ensure currency rates are properly initialized.`);
     }
-    const baseRate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+    const baseRate = toNumberSafe(record.rate);
     if (!Number.isFinite(baseRate) || baseRate <= 0) {
       throw new Error(`Invalid exchange rate of ${baseRate} from USD to ${from}.`);
     }
@@ -64,8 +66,8 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
       );
     }
 
-    const rateUSDToFrom = typeof fromRecord.rate === 'number' ? fromRecord.rate : fromRecord.rate.toNumber();
-    const rateUSDToTo = typeof toRecord.rate === 'number' ? toRecord.rate : toRecord.rate.toNumber();
+    const rateUSDToFrom = toNumberSafe(fromRecord.rate);
+    const rateUSDToTo = toNumberSafe(toRecord.rate);
 
     if (!Number.isFinite(rateUSDToFrom) || rateUSDToFrom <= 0) {
       throw new Error(`Invalid exchange rate of ${rateUSDToFrom} from USD to ${from}.`);
@@ -85,13 +87,6 @@ export async function getCurrentExchangeRate(from: string, to: string): Promise<
   return rate;
 }
 
-function getSecondsUntilMidnight(): number {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setUTCHours(24, 0, 0, 0);
-  return Math.max(1, Math.floor((tomorrow.getTime() - now.getTime()) / 1000));
-}
-
 /**
  * Convert currency using current exchange rates
  * Throws error if exchange rate is not available
@@ -102,9 +97,9 @@ export async function convertCurrencyFromDB(
   to: string
 ): Promise<number> {
   try {
-    if (from === to) return typeof value === 'number' ? value : value.toNumber();
+    if (from === to) return toNumberSafe(value);
 
-    const numValue = typeof value === 'number' ? value : value.toNumber();
+    const numValue = toNumberSafe(value);
     const rate = await getCurrentExchangeRate(from, to);
     return numValue * rate;
   } catch (error) {
@@ -131,10 +126,10 @@ export async function convertCurrencyFromDBHistorical(
   date: Date
 ): Promise<number> {
   try {
-    if (from === to) return typeof value === 'number' ? value : value.toNumber();
+    if (from === to) return toNumberSafe(value);
 
     const rate = await getHistoricalExchangeRate(from, to, date);
-    const numValue = typeof value === 'number' ? value : value.toNumber();
+    const numValue = toNumberSafe(value);
     return numValue * rate;
   } catch (error) {
     console.error(`Error converting currency from ${from} to ${to} for date ${date}:`, error);
@@ -153,23 +148,10 @@ export async function getTotalConverted(
     throw new Error('amountsWithCurrency must be an array');
   }
 
-  let total = 0;
-  for (const amountWithCurrency of amountsWithCurrency) {
-    const isValidAmount = typeof amountWithCurrency.amount === 'number' ||
-      (amountWithCurrency.amount && typeof amountWithCurrency.amount.toNumber === 'function');
+  if (amountsWithCurrency.length === 0) return 0;
 
-    if (!isValidAmount || !amountWithCurrency.currency) {
-      throw new Error('Invalid amount or currency in conversion data');
-    }
-
-    const converted = await convertCurrencyFromDB(
-      amountWithCurrency.amount,
-      amountWithCurrency.currency,
-      baseCurrency
-    );
-    total += converted;
-  }
-  return total;
+  const converted = await batchConvertCurrency(amountsWithCurrency, baseCurrency);
+  return converted.reduce((sum, val) => sum + val, 0);
 }
 
 /**
@@ -183,24 +165,10 @@ export async function getTotalConvertedHistorical(
     throw new Error('amountsWithCurrencyAndDate must be an array');
   }
 
-  let total = 0;
-  for (const item of amountsWithCurrencyAndDate) {
-    const isValidAmount = typeof item.amount === 'number' ||
-      (item.amount && typeof item.amount.toNumber === 'function');
+  if (amountsWithCurrencyAndDate.length === 0) return 0;
 
-    if (!isValidAmount || !item.currency || !(item.date instanceof Date)) {
-      throw new Error('Invalid amount, currency, or date in historical conversion data');
-    }
-
-    const converted = await convertCurrencyFromDBHistorical(
-      item.amount,
-      item.currency,
-      baseCurrency,
-      item.date
-    );
-    total += converted;
-  }
-  return total;
+  const converted = await batchConvertCurrencyHistorical(amountsWithCurrencyAndDate, baseCurrency);
+  return converted.reduce((sum, val) => sum + val, 0);
 }
 
 /**
@@ -260,7 +228,7 @@ export async function batchConvertCurrency(
               });
 
               for (const record of rateRecords) {
-                const rate = typeof record.rate === 'number' ? record.rate : record.rate.toNumber();
+                const rate = toNumberSafe(record.rate);
                 if (Number.isFinite(rate) && rate > 0) {
                     usdRatesMap.set(record.target, rate);
                 }
@@ -307,10 +275,9 @@ export async function batchConvertCurrency(
       }
   }
 
-  // Convert all amounts
   const results: number[] = [];
   for (const item of items) {
-    const numValue = typeof item.amount === 'number' ? item.amount : item.amount.toNumber();
+    const numValue = toNumberSafe(item.amount);
 
     if (item.currency === baseCurrency) {
       results.push(numValue);
@@ -348,10 +315,8 @@ export async function batchConvertCurrencyHistorical(
   for (const item of items) {
     if (item.currency !== baseCurrency) {
       const key = `${item.currency}_${baseCurrency}`;
-      const normalizedDate = new Date(item.date);
-      normalizedDate.setUTCHours(0, 0, 0, 0);
+      const normalizedDate = startOfUtcDay(item.date);
 
-      // Keep the earliest date for each currency pair (for fallback logic)
       const existingDate = rateQueries.get(key);
       if (!existingDate || normalizedDate < existingDate) {
         rateQueries.set(key, normalizedDate);
@@ -362,48 +327,56 @@ export async function batchConvertCurrencyHistorical(
   // Fetch all required historical rates
   const rateMap = new Map<string, number>();
 
-  for (const [currencyPair, earliestDate] of rateQueries) {
+  const uniqueFetches: { rateKey: string; fromCurrency: string; toCurrency: string; date: Date }[] = [];
+
+  for (const [currencyPair] of rateQueries) {
     const [fromCurrency, toCurrency] = currencyPair.split('_');
 
-    // For each item with this currency pair, get the appropriate rate
     const itemsForPair = items.filter(item =>
       item.currency === fromCurrency && item.currency !== baseCurrency
     );
 
     for (const item of itemsForPair) {
-      const normalizedDate = new Date(item.date);
-      normalizedDate.setUTCHours(0, 0, 0, 0);
-
+      const normalizedDate = startOfUtcDay(item.date);
       const rateKey = `${fromCurrency}_${toCurrency}_${normalizedDate.getTime()}`;
 
-      if (!rateMap.has(rateKey)) {
-        try {
-          const rate = await getHistoricalExchangeRate(fromCurrency, toCurrency, normalizedDate);
-          rateMap.set(rateKey, rate);
-        } catch (error) {
-          console.error(`Failed to get historical rate for ${fromCurrency} to ${toCurrency} on ${normalizedDate}:`, error);
-          throw error;
-        }
+      if (!rateMap.has(rateKey) && !uniqueFetches.some(f => f.rateKey === rateKey)) {
+        uniqueFetches.push({ rateKey, fromCurrency, toCurrency, date: normalizedDate });
       }
     }
   }
 
-  // Convert all amounts
+  const RATE_FETCH_CONCURRENCY = 10;
+  const fetchedRates: { rateKey: string; rate: number }[] = [];
+  for (let i = 0; i < uniqueFetches.length; i += RATE_FETCH_CONCURRENCY) {
+    const chunk = uniqueFetches.slice(i, i + RATE_FETCH_CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async ({ rateKey, fromCurrency, toCurrency, date }) => {
+        const rate = await getHistoricalExchangeRate(fromCurrency, toCurrency, date);
+        return { rateKey, rate };
+      })
+    );
+    fetchedRates.push(...chunkResults);
+  }
+
+  for (const { rateKey, rate } of fetchedRates) {
+    rateMap.set(rateKey, rate);
+  }
+
   const results: number[] = [];
   for (const item of items) {
-    const numValue = typeof item.amount === 'number' ? item.amount : item.amount.toNumber();
+    const numValue = toNumberSafe(item.amount);
 
     if (item.currency === baseCurrency) {
       results.push(numValue);
     } else {
-      const normalizedDate = new Date(item.date);
-      normalizedDate.setUTCHours(0, 0, 0, 0);
+      const normalizedDate = startOfUtcDay(item.date);
       const rateKey = `${item.currency}_${baseCurrency}_${normalizedDate.getTime()}`;
       const rate = rateMap.get(rateKey);
 
       if (rate === undefined) {
         throw new Error(
-          `Missing historical exchange rate from ${item.currency} to ${baseCurrency} for ${normalizedDate.toISOString().split('T')[0]}`
+          `Missing historical exchange rate from ${item.currency} to ${baseCurrency} for ${formatDateKey(normalizedDate)}`
         );
       }
 

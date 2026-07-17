@@ -134,16 +134,16 @@ export const createHolding = async (
     }
 
     return withPrismaErrorHandling(async () => {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { baseCurrency: true },
-        });
+        const [user, currentPrice] = await Promise.all([
+            prisma.user.findUnique({
+                where: { id: userId },
+                select: { baseCurrency: true },
+            }),
+            fetchCurrentPrice(data.ticker, data.assetType),
+        ]);
 
         const baseCurrency = user?.baseCurrency ?? 'INR';
-
-        // Fetch current price automatically
-        const currentPrice = await fetchCurrentPrice(data.ticker, data.assetType);
-        const lastPrice = currentPrice || 0; // Default to 0 if price fetch fails
+        const lastPrice = currentPrice || 0;
 
         // Calculate converted value using current price (in USD from APIs)
         const convertedValue = currentPrice

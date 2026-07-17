@@ -1,28 +1,15 @@
 import { getGoals, createGoal, updateGoal } from "../services/goal.service";
 import { withCache, safeDel } from "../../utils/redis";
 import { toNumberSafe } from "../../utils/utils";
-
-function validateDateString(value: string | undefined, label: string): void {
-    if (value !== undefined && isNaN(Date.parse(value))) {
-        throw new Error(`Invalid ${label} format: ${value}`);
-    }
-}
+import { validateDateString, formatDateKey } from "../../utils/date";
+import { presentGoal } from "../utils/presenters";
 
 export async function handleGetGoals(userId: string, includeCompleted?: boolean) {
     const scope = includeCompleted ? "all" : "active";
     return withCache(`adk:goals:${userId}:${scope}`, 180, async () => {
         const goals = await getGoals(userId, includeCompleted);
 
-        return goals.map((g) => ({
-            id: g.id,
-            name: g.name,
-            targetAmount: toNumberSafe(g.targetAmount),
-            savedAmount: toNumberSafe(g.savedAmount),
-            remaining: toNumberSafe(g.targetAmount) - toNumberSafe(g.savedAmount),
-            targetDate: g.targetDate.toISOString().split("T")[0],
-            completed: g.completed,
-            currency: g.currency,
-        }));
+        return goals.map(presentGoal);
     });
 }
 
@@ -91,7 +78,7 @@ export async function handleUpdateGoal(
         message: `Goal "${result.original.name}" updated successfully.`,
         updatedFields: {
             ...(input.targetAmount !== undefined && { targetAmount: toNumberSafe(result.updated.targetAmount) }),
-            ...(input.targetDate !== undefined && { targetDate: result.updated.targetDate.toISOString().split("T")[0] }),
+            ...(input.targetDate !== undefined && { targetDate: formatDateKey(result.updated.targetDate) }),
             ...(input.savedAmount !== undefined && { savedAmount: toNumberSafe(result.updated.savedAmount) }),
             ...(input.completed !== undefined && { completed: result.updated.completed }),
             ...(input.name !== undefined && { name: result.updated.name }),

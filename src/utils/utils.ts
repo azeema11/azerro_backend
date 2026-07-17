@@ -70,3 +70,21 @@ export function calcGoalProgress(saved: number | Prisma.Decimal, target: number 
     if (t === 0) return 0;
     return Math.min(100, (toNumberSafe(saved) / t) * 100);
 }
+
+export function roundTo(value: number, decimals = 2): number {
+    return parseFloat(value.toFixed(decimals));
+}
+
+export function pickDefinedFields<T extends Record<string, any>>(data: T, fields: (keyof T)[]): Partial<T> {
+    const result: Partial<T> = {};
+    for (const field of fields) {
+        if (data[field] !== undefined) {
+            result[field] = data[field];
+        }
+    }
+    return Object.keys(result).length > 0 ? result : ({} as Partial<T>);
+}
+
+export function accumulateByKey(map: Map<string, number>, key: string, amount: number): void {
+    map.set(key, (map.get(key) || 0) + amount);
+}

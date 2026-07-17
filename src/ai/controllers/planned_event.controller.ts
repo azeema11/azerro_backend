@@ -1,27 +1,15 @@
 import { getPlannedEvents, createPlannedEvent, updatePlannedEvent } from "../services/planned_event.service";
 import { withCache, safeDel } from "../../utils/redis";
 import { toNumberSafe } from "../../utils/utils";
-
-function validateDateString(value: string | undefined, label: string): void {
-    if (value !== undefined && isNaN(Date.parse(value))) {
-        throw new Error(`Invalid ${label} format: ${value}`);
-    }
-}
+import { validateDateString, formatDateKey } from "../../utils/date";
+import { presentPlannedEvent } from "../utils/presenters";
 
 export async function handleGetPlannedEvents(userId: string, includeCompleted?: boolean) {
     const scope = includeCompleted ? "all" : "active";
     return withCache(`adk:events:${userId}:${scope}`, 180, async () => {
         const events = await getPlannedEvents(userId, includeCompleted);
 
-        return events.map((e) => ({
-            id: e.id,
-            name: e.name,
-            estimatedCost: toNumberSafe(e.estimatedCost),
-            targetDate: e.targetDate.toISOString().split("T")[0],
-            completed: e.completed,
-            currency: e.currency,
-            category: e.category,
-        }));
+        return events.map(presentPlannedEvent);
     });
 }
 
@@ -91,7 +79,7 @@ export async function handleUpdatePlannedEvent(
         updatedFields: {
             ...(input.name !== undefined && { name: result.updated.name }),
             ...(input.estimatedCost !== undefined && { estimatedCost: toNumberSafe(result.updated.estimatedCost) }),
-            ...(input.targetDate !== undefined && { targetDate: result.updated.targetDate.toISOString().split("T")[0] }),
+            ...(input.targetDate !== undefined && { targetDate: formatDateKey(result.updated.targetDate) }),
             ...(input.savedSoFar !== undefined && { savedSoFar: toNumberSafe(result.updated.savedSoFar) }),
             ...(input.completed !== undefined && { completed: result.updated.completed }),
         },

@@ -1,19 +1,14 @@
 import { Category } from "@prisma/client";
 import { getBudgets, upsertBudget } from "../services/budget.service";
 import { withCache, safeDel } from "../../utils/redis";
-import { toNumberSafe } from "../../utils/utils";
+import { presentBudget } from "../utils/presenters";
 
 export async function handleGetBudgets(userId: string, category?: string) {
     const cat = category || "all";
     return withCache(`adk:budgets:${userId}:${cat}`, 180, async () => {
         const budgets = await getBudgets(userId, category as Category);
 
-        return budgets.map((b) => ({
-            id: b.id,
-            category: b.category,
-            budgetAmount: toNumberSafe(b.amount),
-            period: b.period,
-        }));
+        return budgets.map(presentBudget);
     });
 }
 

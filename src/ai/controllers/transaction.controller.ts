@@ -1,13 +1,8 @@
 import { Category, TransactionType } from "@prisma/client";
 import { getTransactions, createTransaction } from "../services/transaction.service";
 import { withCache, safeDel } from "../../utils/redis";
-import { toNumberSafe } from "../../utils/utils";
-
-function validateDateString(value: string | undefined, label: string): void {
-    if (value !== undefined && isNaN(Date.parse(value))) {
-        throw new Error(`Invalid ${label} format: ${value}`);
-    }
-}
+import { validateDateString } from "../../utils/date";
+import { presentTransaction } from "../utils/presenters";
 
 export async function handleGetTransactions(
     userId: string,
@@ -32,15 +27,7 @@ export async function handleGetTransactions(
             limit: input.limit,
         });
 
-        return transactions.map((t) => ({
-            id: t.id,
-            date: t.date.toISOString(),
-            amount: toNumberSafe(t.amount),
-            category: t.category,
-            description: t.description || "",
-            currency: t.currency,
-            type: t.type,
-        }));
+        return transactions.map(presentTransaction);
     });
 }
 
