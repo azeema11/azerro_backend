@@ -1,13 +1,19 @@
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 
+export const getTransactionsSchema = z.object({
+    query: z.object({
+        type: z.nativeEnum(TransactionType).optional(),
+    }),
+});
+
 export const createTransactionSchema = z.object({
     body: z.object({
         bankAccountId: z.uuid().optional(),
         type: z.enum(TransactionType),
         amount: z.number().positive(),
-        currency: z.string().length(3),
-        category: z.string().min(1),
+        currency: z.string().trim().length(3),
+        category: z.string().trim().min(1),
         description: z.string().optional(),
         date: z.iso.datetime(),
     }),
@@ -18,8 +24,8 @@ export const updateTransactionSchema = z.object({
         bankAccountId: z.uuid().optional(),
         type: z.enum(TransactionType).optional(),
         amount: z.number().positive().optional(),
-        currency: z.string().length(3).optional(),
-        category: z.string().min(1).optional(),
+        currency: z.string().trim().length(3).optional(),
+        category: z.string().trim().min(1).optional(),
         description: z.string().optional(),
         date: z.string().datetime().optional(),
     }),

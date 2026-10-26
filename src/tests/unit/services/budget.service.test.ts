@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createNewBudget } from '../../../services/budget.service';
 import prisma from '../../../utils/db';
-import { ValidationError } from '../../../utils/prisma_errors';
 import { Periodicity } from '@prisma/client';
 
 // Mock Prisma
@@ -51,15 +50,6 @@ describe('Budget Service', () => {
                 }
             });
             expect(result).toEqual(expectedResult);
-        });
-
-        it('should throw validation error if category is missing', async () => {
-            const mockData = {
-                amount: 500,
-                period: Periodicity.MONTHLY
-            } as any;
-
-            await expect(createNewBudget('user1', mockData)).rejects.toThrow(ValidationError);
         });
     });
 });

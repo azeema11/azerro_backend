@@ -12,34 +12,6 @@ async function invalidateUserCaches(userId: string) {
 }
 
 export const createNewBudget = async (userId: string, data: CreateBudgetInput) => {
-    // Validation
-    if (!data.category) {
-        throw new ValidationError(
-            'Category is required',
-            'Budget',
-            undefined,
-            { field: 'category', validationType: 'business' }
-        );
-    }
-
-    if (!data.amount || data.amount <= 0) {
-        throw new ValidationError(
-            'Amount must be greater than 0',
-            'Budget',
-            undefined,
-            { field: 'amount', validationType: 'business' }
-        );
-    }
-
-    if (!data.period) {
-        throw new ValidationError(
-            'Period is required',
-            'Budget',
-            undefined,
-            { field: 'period', validationType: 'business' }
-        );
-    }
-
     return withPrismaErrorHandling(async () => {
         const budget = await prisma.budget.create({
             data: {

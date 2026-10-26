@@ -11,22 +11,12 @@ import {
 } from '../services/transaction.service';
 
 export const getTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const { type } = req.query;
-
-  const transactions = await getTransactionsService(req.userId, type as TransactionType);
+  const transactions = await getTransactionsService(req.userId!, type as TransactionType);
   res.status(200).json(transactions);
 });
 
 export const createTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  // Create typed input object from request body
   const { amount, currency, category, type, description, date, bankAccountId } = req.body;
 
   const transactionInput: CreateTransactionInput = {
@@ -39,18 +29,12 @@ export const createTransaction = asyncHandler(async (req: AuthRequest, res: Resp
     bankAccountId
   };
 
-  const txn = await createTransactionService(req.userId, transactionInput);
+  const txn = await createTransactionService(req.userId!, transactionInput);
   res.status(201).json(txn);
 });
 
 export const updateTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const { id } = req.params;
-
-  // Create typed update object from request body
   const { amount, currency, category, type, description, date, bankAccountId } = req.body;
 
   const updateData: TransactionUpdateData = {
@@ -63,16 +47,12 @@ export const updateTransaction = asyncHandler(async (req: AuthRequest, res: Resp
     bankAccountId
   };
 
-  const updated = await updateTransactionService(id, req.userId, updateData);
+  const updated = await updateTransactionService(id, req.userId!, updateData);
   res.status(200).json(updated);
 });
 
 export const deleteTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const { id } = req.params;
-  await deleteTransactionService(id, req.userId);
+  await deleteTransactionService(id, req.userId!);
   res.status(204).send();
 });

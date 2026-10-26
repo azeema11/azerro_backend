@@ -36,6 +36,7 @@ See the dedicated [AI Module README](src/ai/README.md) for detailed architecture
 | Database | PostgreSQL, Prisma ORM |
 | Caching & Rate Limiting | Redis (ioredis) |
 | AI Framework | Google ADK, Gemini 2.5 |
+| Input Validation | Zod 4 |
 | Integration Protocols | Model Context Protocol (MCP) SDK |
 | Testing | Vitest, Supertest |
 | Process Management | ts-node-dev, Docker Compose |
@@ -56,13 +57,14 @@ See the dedicated [AI Module README](src/ai/README.md) for detailed architecture
 │   │   ├── controllers/    # AI tool handlers with Redis caching
 │   │   ├── services/       # AI-specific services (MCP client, user memory, chat)
 │   │   ├── routes/         # AI routing
+│   │   ├── validations/    # AI-specific Zod schemas
 │   │   └── tests/          # Integration tests (fully mocked)
 │   ├── controllers/        # Core HTTP handlers
 │   ├── services/           # Business logic + broker integrations
 │   ├── routes/             # Core API routes
 │   ├── jobs/               # Background cron jobs
-│   ├── middlewares/        # Auth, rate limiting, error handling
-│   ├── validations/        # Zod schemas
+│   ├── middlewares/        # Auth, validation, rate limiting, error handling
+│   ├── validations/        # Zod schemas for all route inputs
 │   ├── types/              # TypeScript interfaces
 │   ├── utils/              # Shared utilities (db, redis, currency, errors)
 │   ├── scripts/            # Seeding and maintenance
@@ -70,6 +72,61 @@ See the dedicated [AI Module README](src/ai/README.md) for detailed architecture
 ├── docker-compose.yml      # Production (Redis + pre-built backend image)
 └── docker-compose_local.yml # Local dev (Postgres + Redis + backend from source)
 ```
+
+---
+
+## Architecture
+
+### Request Flow
+
+```
+Client → Express → CORS → Body Parser → Security Headers
+  → Rate Limiter (Redis) → Auth Middleware (JWT)
+  → Zod Validation Middleware → Controller → Service → Prisma/Redis
+  → Global Error Handler → Response
+```
+
+### Validation Strategy
+
+All request inputs are validated at the route level using **Zod schemas** via a centralized `validate()` middleware. Each route file wires the appropriate schema for `body`, `query`, and `params` validation. The validated and transformed values are re-assigned to `req.body`, `req.query`, and `req.params`, ensuring downstream code receives correctly typed data.
+
+Schemas are organized per domain in `src/validations/`:
+
+| File | Covers |
+|------|--------|
+| `auth.schema.ts` | Registration, login |
+| `transaction.schema.ts` | CRUD + list filtering |
+| `holding.schema.ts` | CRUD + list/history filtering |
+| `goal.schema.ts` | CRUD + contribute |
+| `budget.schema.ts` | CRUD |
+| `planned_event.schema.ts` | CRUD + complete/reset |
+| `bank_account.schema.ts` | CRUD |
+| `report.schema.ts` | Date ranges, periodic reports, asset allocation |
+| `broker.schema.ts` | Connection, sync, search, instrument details, memory |
+| `user.schema.ts` | Profile update |
+| `ai.schema.ts` | Assistant message + session ID |
+
+Services contain only **business logic validations** (e.g., "target date must be in the future", "email already in use") — field-presence and type checks are handled exclusively by Zod.
+
+### Error Handling
+
+A layered error handling middleware chain catches and formats all errors:
+
+1. **Zod validation errors** → 400 with structured field-level details
+2. **Domain errors** (`ValidationError`, `NotFoundError`) → appropriate HTTP codes with resource context
+3. **Prisma errors** → mapped to domain errors via `withPrismaErrorHandling` / `withNotFoundHandling`
+4. **CORS errors** → 403
+5. **Unexpected errors** → 500 (with stack traces in development)
+
+### Async Patterns
+
+Performance-critical paths use batched parallel execution:
+
+- **Currency conversion** — `batchConvertCurrency()` and `batchConvertCurrencyHistorical()` fetch all required exchange rates in a single DB query, then apply them in memory.
+- **Goal conflict detection** — All goal and event amounts are batch-converted in one call instead of sequential per-item queries.
+- **Asset allocation** — Holdings needing price conversion are batch-processed.
+- **Report generation** — Transactions, budgets, and events are fetched in parallel via `Promise.all`.
+- **Background jobs** — Metal price updates and broker syncs run concurrently with chunked concurrency limits.
 
 ---
 
@@ -128,7 +185,12 @@ npm run populate      # (Optional) Populate dummy data for testing
 
 ## API Endpoints
 
-### Authentication (`/auth`)
+All endpoints except `/auth/*`, `/health`, and `GET /brokers/indmoney/callback` require a `Bearer` token via `Authorization` header. All request bodies, query params, and path params are validated with Zod schemas.
+
+### Health (`/health`)
+`GET /` — Server status, uptime, environment
+
+### Authentication (`/auth`) — rate limited: 10 req / 15 min per email
 `POST /signup` · `POST /login`
 
 ### User (`/user`)
@@ -138,10 +200,10 @@ npm run populate      # (Optional) Populate dummy data for testing
 `GET /` · `POST /` · `PUT /:id` · `DELETE /:id`
 
 ### Transactions (`/transactions`)
-`GET /` · `POST /` · `PUT /:id` · `DELETE /:id`
+`GET /?type=INCOME|EXPENSE` · `POST /` · `PUT /:id` · `DELETE /:id`
 
 ### Holdings (`/holdings`)
-`GET /` · `GET /history` · `POST /` · `PUT /:id` · `DELETE /:id`
+`GET /?onlyWithBalance=true` · `GET /history?limit=N` · `POST /` · `PUT /:id` · `DELETE /:id`
 
 ### Goals (`/goals`)
 `GET /` · `POST /` · `GET /:id` · `PUT /:id` · `DELETE /:id` · `POST /:id/contribute` · `GET /conflicts`
@@ -156,10 +218,10 @@ npm run populate      # (Optional) Populate dummy data for testing
 `GET /expenses-summary` · `GET /monthly-income-expense` · `GET /income-vs-expense` · `GET /category-breakdown` · `GET /asset-allocation` · `GET /budget-vs-actual` · `GET /goal-progress` · `GET /recurring-transactions`
 
 ### Brokers (`/brokers`)
-`POST /:broker/connect` · `GET /indmoney/callback` · `GET /:broker/status` · `POST /:broker/sync` · `POST /:broker/disconnect` · `GET /:broker/search` · `GET /:broker/instrument/:symbol` · `GET /memory/all` · `POST /memory/save` · `DELETE /memory/:category/:key`
+`POST /:broker/connect` · `GET /indmoney/callback` · `GET /:broker/status` · `POST /:broker/sync` · `POST /:broker/disconnect` · `GET /:broker/search?query=` · `GET /:broker/instrument/:symbol` · `GET /memory/all` · `POST /memory/save` · `DELETE /memory/:category/:key`
 
-### AI (`/ai`)
-`POST /assistant` — Unified conversational endpoint (rate-limited, authenticated)
+### AI (`/ai`) — rate limited: 50 req / day
+`POST /assistant` — Unified conversational endpoint (authenticated, rate-limited, Zod-validated)
 
 ---
 
@@ -168,7 +230,7 @@ npm run populate      # (Optional) Populate dummy data for testing
 | Job | Schedule | Purpose |
 |-----|----------|---------|
 | Currency Rate Refresh | Every 6 hours | Updates exchange rates from fxratesapi.com |
-| Holdings Price Refresh | Every 6 hours | Updates stock/crypto/metal prices |
+| Holdings Price Refresh | Twice daily (12:30, 22:30) | Updates metal prices + syncs INDMoney holdings |
 | Database Maintenance | Monthly (1st, 2AM UTC) | VACUUM, REINDEX, ANALYZE |
 
 ---

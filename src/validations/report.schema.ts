@@ -27,3 +27,7 @@ export const assetAllocationSchema = z.object({
         groupBy: z.enum(['assetType', 'platform', 'ticker']).optional(),
     }),
 });
+
+export const emptyQuerySchema = z.object({
+    query: z.object({}).optional(),
+});

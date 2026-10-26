@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { AssetType } from '@prisma/client';
 
+export const getHoldingsSchema = z.object({
+    query: z.object({
+        onlyWithBalance: z.enum(['true', 'false']).optional(),
+    }),
+});
+
+export const getHoldingHistorySchema = z.object({
+    query: z.object({
+        limit: z.coerce.number().int().positive().optional(),
+        onlyWithBalance: z.enum(['true', 'false']).optional(),
+    }),
+});
+
 export const createHoldingSchema = z.object({
     body: z.object({
         platform: z.string().optional(),

@@ -4,34 +4,7 @@ import { withNotFoundHandling, withPrismaErrorHandling, ValidationError, NotFoun
 import { PlannedEventUpdateData, CreatePlannedEventInput } from '../types/service_types';
 
 export async function createPlannedEvent(userId: string, data: CreatePlannedEventInput) {
-    // Validation
-    if (!data.name?.trim()) {
-        throw new ValidationError(
-            'Planned event name is required',
-            'PlannedEvent',
-            undefined,
-            { field: 'name', validationType: 'business' }
-        );
-    }
-
-    if (!data.estimatedCost || data.estimatedCost <= 0) {
-        throw new ValidationError(
-            'Estimated cost must be greater than 0',
-            'PlannedEvent',
-            undefined,
-            { field: 'estimatedCost', validationType: 'business' }
-        );
-    }
-
-    if (!data.targetDate) {
-        throw new ValidationError(
-            'Target date is required',
-            'PlannedEvent',
-            undefined,
-            { field: 'targetDate', validationType: 'business' }
-        );
-    }
-
+    // Business logic validation: target date must be in the future
     if (data.targetDate <= new Date()) {
         throw new ValidationError(
             'Target date must be in the future',

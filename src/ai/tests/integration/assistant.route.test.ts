@@ -121,13 +121,13 @@ describe('Unified Assistant Route - POST /ai/assistant', () => {
 
         const response = await request(app)
             .post('/ai/assistant')
-            .send({ message: 'Tell me more', sessionId: 'custom-session-123' });
+            .send({ message: 'Tell me more', sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' });
 
         expect(response.status).toBe(200);
         expect(mockRunAssistant).toHaveBeenCalledWith(
             'test-user-id',
             'Tell me more',
-            'custom-session-123'
+            'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
         );
     });
 

@@ -2,7 +2,7 @@ import prisma from '../utils/db';
 import { safeGet, safeSetex } from '../utils/redis';
 import { convertCurrencyFromDB } from '../utils/currency';
 import { getMetalSpotPrices, findMetalPrice } from '../utils/price';
-import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { withNotFoundHandling, withPrismaErrorHandling } from '../utils/prisma_errors';
 import { HoldingUpdateData, CreateHoldingInput } from '../types/service_types';
 
 // Helper function to fetch current price
@@ -69,70 +69,6 @@ export const createHolding = async (
     userId: string,
     data: CreateHoldingInput
 ) => {
-    // Validation
-    if (!data.platform?.trim()) {
-        throw new ValidationError(
-            'Platform is required',
-            'Holding',
-            undefined,
-            { field: 'platform', validationType: 'business' }
-        );
-    }
-
-    if (!data.ticker?.trim()) {
-        throw new ValidationError(
-            'Ticker is required',
-            'Holding',
-            undefined,
-            { field: 'ticker', validationType: 'business' }
-        );
-    }
-
-    if (!data.assetType) {
-        throw new ValidationError(
-            'Asset type is required',
-            'Holding',
-            undefined,
-            { field: 'assetType', validationType: 'business' }
-        );
-    }
-
-    if (!data.quantity || data.quantity <= 0) {
-        throw new ValidationError(
-            'Quantity must be greater than 0',
-            'Holding',
-            undefined,
-            { field: 'quantity', validationType: 'business' }
-        );
-    }
-
-    if (!data.avgCost || data.avgCost <= 0) {
-        throw new ValidationError(
-            'Average cost must be greater than 0',
-            'Holding',
-            undefined,
-            { field: 'avgCost', validationType: 'business' }
-        );
-    }
-
-    if (!data.holdingCurrency?.trim()) {
-        throw new ValidationError(
-            'Holding currency is required',
-            'Holding',
-            undefined,
-            { field: 'holdingCurrency', validationType: 'business' }
-        );
-    }
-
-    if (!data.name?.trim()) {
-        throw new ValidationError(
-            'Name is required',
-            'Holding',
-            undefined,
-            { field: 'name', validationType: 'business' }
-        );
-    }
-
     return withPrismaErrorHandling(async () => {
         const [user, currentPrice] = await Promise.all([
             prisma.user.findUnique({
