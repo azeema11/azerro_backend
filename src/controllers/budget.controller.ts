@@ -5,30 +5,17 @@ import { createNewBudget, deleteUserBudget, getUserBudgetPerformance, getUserBud
 import { BudgetUpdateData } from "../types/service_types";
 
 export const createBudget = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const { category, amount, period } = req.body;
-    const result = await createNewBudget(req.userId, { category, amount, period });
+    const result = await createNewBudget(req.userId!, { category, amount, period });
     res.status(201).json(result);
 });
 
 export const getBudgets = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const budgets = await getUserBudgets(req.userId);
+    const budgets = await getUserBudgets(req.userId!);
     res.status(200).json(budgets);
 });
 
 export const updateBudget = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // Create typed update object from request body
     const { amount, category, period } = req.body;
 
     const updateData: BudgetUpdateData = {
@@ -37,24 +24,16 @@ export const updateBudget = asyncHandler(async (req: AuthRequest, res: Response)
         period
     };
 
-    const updatedBudget = await updateUserBudget(req.params.id, req.userId, updateData);
+    const updatedBudget = await updateUserBudget(req.params.id, req.userId!, updateData);
     res.status(200).json(updatedBudget);
 });
 
 export const deleteBudget = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    await deleteUserBudget(req.params.id, req.userId);
+    await deleteUserBudget(req.params.id, req.userId!);
     res.status(204).send();
 });
 
 export const getBudgetPerformance = asyncHandler(async (req: AuthRequest, res: Response) => {
-    if (!req.userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const performance = await getUserBudgetPerformance(req.userId);
+    const performance = await getUserBudgetPerformance(req.userId!);
     res.status(200).json(performance);
 });

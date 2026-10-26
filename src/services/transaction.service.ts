@@ -1,6 +1,6 @@
 import prisma from '../utils/db';
 import { TransactionType } from '@prisma/client';
-import { withNotFoundHandling, withPrismaErrorHandling, ValidationError } from '../utils/prisma_errors';
+import { withNotFoundHandling, withPrismaErrorHandling } from '../utils/prisma_errors';
 import { TransactionUpdateData, CreateTransactionInput } from '../types/service_types';
 
 export const getTransactions = async (userId: string, type?: TransactionType) => {
@@ -27,43 +27,6 @@ export const createTransaction = async (
     userId: string,
     data: CreateTransactionInput
 ) => {
-    // Validation
-    if (!data.amount || data.amount === 0) {
-        throw new ValidationError(
-            'Transaction amount is required and cannot be zero',
-            'Transaction',
-            undefined,
-            { field: 'amount', validationType: 'business' }
-        );
-    }
-
-    if (!data.currency?.trim()) {
-        throw new ValidationError(
-            'Currency is required',
-            'Transaction',
-            undefined,
-            { field: 'currency', validationType: 'business' }
-        );
-    }
-
-    if (!data.category) {
-        throw new ValidationError(
-            'Category is required',
-            'Transaction',
-            undefined,
-            { field: 'category', validationType: 'business' }
-        );
-    }
-
-    if (!data.date) {
-        throw new ValidationError(
-            'Transaction date is required',
-            'Transaction',
-            undefined,
-            { field: 'date', validationType: 'business' }
-        );
-    }
-
     return withPrismaErrorHandling(async () => {
         return await prisma.transaction.create({
             data: {

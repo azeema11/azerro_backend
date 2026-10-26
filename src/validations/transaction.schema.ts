@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { TransactionType } from '@prisma/client';
 
+export const getTransactionsSchema = z.object({
+    query: z.object({
+        type: z.nativeEnum(TransactionType).optional(),
+    }),
+});
+
 export const createTransactionSchema = z.object({
     body: z.object({
         bankAccountId: z.uuid().optional(),

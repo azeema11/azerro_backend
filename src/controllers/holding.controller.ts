@@ -11,40 +11,19 @@ import {
 } from '../services/holding.service';
 
 export const getHoldings = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const onlyWithBalance = req.query.onlyWithBalance === 'true';
-  const holdings = await getHoldingsService(req.userId, onlyWithBalance);
+  const holdings = await getHoldingsService(req.userId!, onlyWithBalance);
   res.status(200).json(holdings);
 });
 
 export const getHoldingHistory = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-  const history = await getHoldingHistoryService(req.userId, limit);
+  const history = await getHoldingHistoryService(req.userId!, limit);
   res.status(200).json(history);
 });
 
 export const createHolding = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  // Create typed input object from request body
-  const {
-    platform,
-    ticker,
-    assetType,
-    quantity,
-    avgCost,
-    holdingCurrency,
-    name,
-  } = req.body;
+  const { platform, ticker, assetType, quantity, avgCost, holdingCurrency, name } = req.body;
 
   const holdingInput: CreateHoldingInput = {
     platform,
@@ -56,18 +35,12 @@ export const createHolding = asyncHandler(async (req: AuthRequest, res: Response
     name
   };
 
-  const result = await createHoldingService(req.userId, holdingInput);
+  const result = await createHoldingService(req.userId!, holdingInput);
   res.status(201).json(result);
 });
 
 export const updateHolding = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const { id } = req.params;
-
-  // Create typed update object from request body
   const { platform, ticker, assetType, name, quantity, avgCost, holdingCurrency, lastPrice, convertedValue } = req.body;
 
   const updateData: HoldingUpdateData = {
@@ -82,17 +55,12 @@ export const updateHolding = asyncHandler(async (req: AuthRequest, res: Response
     convertedValue
   };
 
-  const updated = await updateHoldingService(id, req.userId, updateData);
+  const updated = await updateHoldingService(id, req.userId!, updateData);
   res.status(200).json(updated);
 });
 
 export const deleteHolding = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   const { id } = req.params;
-
-  await deleteHoldingService(id, req.userId);
+  await deleteHoldingService(id, req.userId!);
   res.status(204).send();
 });

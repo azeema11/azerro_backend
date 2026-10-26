@@ -1,6 +1,6 @@
 import { TransactionType, Periodicity } from "@prisma/client";
 import prisma from "../utils/db";
-import { convertCurrencyFromDB, batchConvertCurrencyHistorical } from "../utils/currency";
+import { convertCurrencyFromDB, batchConvertCurrency, batchConvertCurrencyHistorical } from "../utils/currency";
 import { daysBetween, detectFrequency, getPeriodDates, parseOptionalDateRange, formatDateKey, formatPeriodLabel } from "../utils/date";
 import { withCache } from "../utils/redis";
 import { groupBy, toNumberSafe, calcGoalProgress, roundTo, accumulateByKey } from "../utils/utils";
@@ -121,15 +121,37 @@ export async function getAssetAllocation(userId: string, groupByField: 'assetTyp
     return withCache(`report:allocation:${userId}:${groupByField}`, 600, async () => {
         const holdings = await prisma.holding.findMany({ where: { userId } });
 
-        const allocationMap = new Map<string, number>();
-        for (const holding of holdings) {
-            let convertedValueNumber = toNumberSafe(holding.convertedValue || 0);
-            if (convertedValueNumber === 0) {
+        // Identify holdings that need currency conversion (convertedValue is 0/null)
+        const needsConversion: { index: number; amount: number; currency: string }[] = [];
+        const preComputed: number[] = new Array(holdings.length);
+
+        for (let i = 0; i < holdings.length; i++) {
+            const holding = holdings[i];
+            const existing = toNumberSafe(holding.convertedValue || 0);
+            if (existing === 0) {
                 const totalValue = toNumberSafe(holding.lastPrice) * toNumberSafe(holding.quantity);
-                convertedValueNumber = await convertCurrencyFromDB(totalValue, holding.holdingCurrency, user.baseCurrency);
+                needsConversion.push({ index: i, amount: totalValue, currency: holding.holdingCurrency });
+                preComputed[i] = 0;
+            } else {
+                preComputed[i] = existing;
             }
-            const key = holding[groupByField];
-            accumulateByKey(allocationMap, key, convertedValueNumber);
+        }
+
+        // Batch convert all missing values in one call
+        if (needsConversion.length > 0) {
+            const converted = await batchConvertCurrency(
+                needsConversion.map(n => ({ amount: n.amount, currency: n.currency })),
+                user.baseCurrency
+            );
+            for (let i = 0; i < needsConversion.length; i++) {
+                preComputed[needsConversion[i].index] = converted[i];
+            }
+        }
+
+        const allocationMap = new Map<string, number>();
+        for (let i = 0; i < holdings.length; i++) {
+            const key = holdings[i][groupByField];
+            accumulateByKey(allocationMap, key, preComputed[i]);
         }
 
         const breakdown = Array.from(allocationMap.entries()).map(([group, value]) => ({
