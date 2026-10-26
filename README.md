@@ -185,7 +185,7 @@ npm run populate      # (Optional) Populate dummy data for testing
 
 ## API Endpoints
 
-All endpoints except `/auth/*` and `/health` require a `Bearer` token via `Authorization` header. All request bodies, query params, and path params are validated with Zod schemas.
+All endpoints except `/auth/*`, `/health`, and `GET /brokers/indmoney/callback` require a `Bearer` token via `Authorization` header. All request bodies, query params, and path params are validated with Zod schemas.
 
 ### Health (`/health`)
 `GET /` — Server status, uptime, environment

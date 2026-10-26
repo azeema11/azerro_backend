@@ -59,7 +59,7 @@ src/ai/
 ```
 
 - `message` (required) — Non-empty string, auto-trimmed.
-- `sessionId` (optional) — Valid UUID. When omitted, a new session is created.
+- `sessionId` (optional) — Non-empty string. When omitted, a default session is created as `session_{userId}`.
 
 ### Response
 
